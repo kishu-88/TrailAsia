@@ -1,0 +1,10 @@
+const path = require('path');
+
+// Point sequelize-cli at the folder layout this project already uses,
+// rather than the flat default (config/, models/, migrations/, seeders/).
+module.exports = {
+  config: path.resolve('src', 'config', 'config.js'),
+  'models-path': path.resolve('src', 'models'),
+  'migrations-path': path.resolve('db', 'migrations'),
+  'seeders-path': path.resolve('db', 'seeds'),
+};

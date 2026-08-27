@@ -1,0 +1,23 @@
+# Normalise line endings so Windows and macOS/Linux teammates don't fight
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binary files — never diff or convert
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.woff  binary
+*.woff2 binary
+
+# Keep lockfiles out of PR diffs (still versioned, just collapsed)
+package-lock.json linguist-generated=true -diff

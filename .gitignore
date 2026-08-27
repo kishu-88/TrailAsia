@@ -1,0 +1,148 @@
+# ---------------------------------------------------------------------------
+# TrailAsia — root .gitignore
+#
+# Covers the whole monorepo (client/ and server/). One file rather than several,
+# so there is a single place to look when something unexpectedly does or does not
+# show up in `git status`.
+#
+# Useful when a rule surprises you:
+#   git check-ignore -v <path>     tells you which line is doing it
+#   git status --ignored           lists everything currently being skipped
+#
+# NOT ignored, deliberately:
+#   package-lock.json  — pins exact dependency versions so every teammate and the
+#                        marker installs the same tree. Commit it.
+#   .env.example       — the template. Real .env files are ignored below.
+#   .gitkeep           — holds empty folders in the repo.
+# ---------------------------------------------------------------------------
+
+# --- Dependencies ----------------------------------------------------------
+node_modules/
+.pnp/
+.pnp.js
+jspm_packages/
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+.pnpm-store/
+
+# --- Build output ----------------------------------------------------------
+dist/
+dist-ssr/
+build/
+out/
+*.tsbuildinfo
+
+# --- Secrets ---------------------------------------------------------------
+# Real environment files never go in version control. If one is committed by
+# accident, rotate the credentials — removing the commit is not enough, because
+# the value is already in everyone's clone.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+serviceAccount*.json
+
+# --- Logs and diagnostics --------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+*.pid
+*.pid.lock
+*.seed
+.node_repl_history
+
+# --- Tests and coverage ----------------------------------------------------
+coverage/
+.nyc_output/
+*.lcov
+test-results/
+junit.xml
+.jest-cache/
+
+# --- Caches ----------------------------------------------------------------
+.cache/
+.npm/
+.eslintcache
+.stylelintcache
+.turbo/
+.vite/
+.parcel-cache/
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# --- Database --------------------------------------------------------------
+# The schema lives in server/db/migrations. Local dumps, scratch SQLite files
+# and anything a developer exported to look at do not belong in the repo.
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.db
+dump.rdb
+server/db/*.local.sql
+
+# --- Uploaded traveller documents ------------------------------------------
+# Passports, visas, insurance certificates and health declarations land here at
+# runtime. These are personal — and under the Privacy Act 1988 the health ones
+# are sensitive — information. They must never reach a git history, which is
+# public to everyone with clone access and effectively impossible to purge.
+server/uploads/*
+!server/uploads/.gitkeep
+
+# --- Editors and IDEs ------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.sample.json
+.history/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# --- Merge, backup and patch artefacts -------------------------------------
+*.orig
+*.rej
+*.bak
+*.patch.tmp
+
+# --- Operating system ------------------------------------------------------
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+desktop.ini
+$RECYCLE.BIN/
+*.lnk
+# Linux
+.fuse_hidden*
+.directory
+.Trash-*
+
+# --- Scratch ---------------------------------------------------------------
+tmp/
+temp/
+*.local
+scratch/

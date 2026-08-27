@@ -1,0 +1,319 @@
+/* ---------------------------------------------------------------------------
+   TrailAsia — global styles and design tokens.
+   Deliberately plain. Replace with a component library later if the team agrees,
+   but keep the tokens so colours and spacing stay defined in one place.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --colour-bg: #f5f6f8;
+  --colour-surface: #ffffff;
+  --colour-surface-muted: #f0f2f5;
+  --colour-border: #d9dde3;
+  --colour-text: #1c2430;
+  --colour-text-muted: #5c6673;
+  --colour-primary: #14614d;
+  --colour-primary-hover: #0f4c3c;
+  --colour-danger: #a32222;
+  --colour-danger-bg: #fdeceb;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --shadow-card: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--colour-text);
+  background: var(--colour-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- Layout primitives --------------------------------------------------- */
+
+.page-centre {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+}
+
+.app-shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main {
+  flex: 1;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.stack--centre {
+  align-items: center;
+  text-align: center;
+}
+
+/* --- Typography ---------------------------------------------------------- */
+
+.heading {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.muted {
+  margin: var(--space-1) 0 0;
+  color: var(--colour-text-muted);
+}
+
+/* --- Top bar ------------------------------------------------------------- */
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  background: var(--colour-surface);
+  border-bottom: 1px solid var(--colour-border);
+}
+
+.top-bar__brand {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--colour-primary);
+}
+
+.top-bar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.top-bar__user {
+  color: var(--colour-text-muted);
+  font-size: 14px;
+}
+
+/* --- Cards --------------------------------------------------------------- */
+
+.card {
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-card);
+}
+
+.card--muted {
+  background: var(--colour-surface-muted);
+  box-shadow: none;
+}
+
+.card__title {
+  margin: 0 0 var(--space-3);
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--colour-text-muted);
+}
+
+.detail-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.detail-list__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--colour-border);
+}
+
+.detail-list__row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.detail-list dt {
+  color: var(--colour-text-muted);
+}
+
+.detail-list dd {
+  margin: 0;
+  font-weight: 500;
+  text-align: right;
+}
+
+/* --- Auth card ----------------------------------------------------------- */
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-card);
+}
+
+.auth-card__header {
+  margin-bottom: var(--space-5);
+}
+
+.auth-card__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--colour-primary);
+}
+
+.auth-card__subtitle {
+  margin: var(--space-1) 0 0;
+  font-size: 14px;
+  color: var(--colour-text-muted);
+}
+
+.auth-card__note {
+  margin: var(--space-5) 0 0;
+  font-size: 13px;
+  color: var(--colour-text-muted);
+}
+
+/* --- Forms --------------------------------------------------------------- */
+
+.field {
+  margin-bottom: var(--space-4);
+}
+
+.field__label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.field__input {
+  width: 100%;
+  padding: 10px var(--space-3);
+  font: inherit;
+  color: inherit;
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-sm);
+}
+
+.field__input:focus {
+  outline: 2px solid var(--colour-primary);
+  outline-offset: 1px;
+  border-color: var(--colour-primary);
+}
+
+.field__input--invalid {
+  border-color: var(--colour-danger);
+}
+
+.field__error {
+  margin: var(--space-1) 0 0;
+  font-size: 13px;
+  color: var(--colour-danger);
+}
+
+/* --- Buttons ------------------------------------------------------------- */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px var(--space-4);
+  font: inherit;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.button--primary {
+  width: 100%;
+  color: #fff;
+  background: var(--colour-primary);
+}
+
+.button--primary:hover:not(:disabled) {
+  background: var(--colour-primary-hover);
+}
+
+.button--secondary {
+  color: var(--colour-text);
+  background: var(--colour-surface);
+  border-color: var(--colour-border);
+  text-decoration: none;
+}
+
+.button--ghost {
+  padding: 6px var(--space-3);
+  font-size: 14px;
+  color: var(--colour-text-muted);
+  background: transparent;
+  border-color: var(--colour-border);
+}
+
+.button--ghost:hover:not(:disabled) {
+  background: var(--colour-surface-muted);
+}
+
+/* --- Alerts -------------------------------------------------------------- */
+
+.alert {
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
+.alert--error {
+  color: var(--colour-danger);
+  background: var(--colour-danger-bg);
+  border: 1px solid rgba(163, 34, 34, 0.25);
+}
