@@ -1,0 +1,55 @@
+parent_table,child_table,child_column,parent_optional,on_parent_delete
+users,refresh_tokens,user_id,yes,CASCADE
+travellers,refresh_tokens,traveller_id,yes,CASCADE
+operators,refresh_tokens,operator_id,yes,CASCADE
+destinations,document_requirements,destination_id,no,CASCADE
+users,travellers,created_by_user_id,yes,SET NULL
+travellers,traveller_documents,traveller_id,no,CASCADE
+destinations,traveller_documents,destination_id,yes,SET NULL
+users,traveller_documents,verified_by_user_id,yes,SET NULL
+operator_confirmations,traveller_documents,operator_confirmation_id,yes,SET NULL
+users,bookings,consultant_id,no,RESTRICT
+users,bookings,coordinator_id,yes,SET NULL
+travellers,bookings,lead_traveller_id,yes,SET NULL
+users,bookings,created_by_user_id,yes,SET NULL
+bookings,booking_travellers,booking_id,no,CASCADE
+travellers,booking_travellers,traveller_id,no,CASCADE
+bookings,itinerary_segments,booking_id,no,CASCADE
+destinations,itinerary_segments,destination_id,no,RESTRICT
+travellers,location_consents,traveller_id,no,CASCADE
+bookings,location_consents,booking_id,no,CASCADE
+travellers,location_pings,traveller_id,no,CASCADE
+bookings,location_pings,booking_id,no,CASCADE
+travellers,sos_alerts,traveller_id,no,RESTRICT
+bookings,sos_alerts,booking_id,no,RESTRICT
+users,sos_alerts,acknowledged_by_user_id,yes,SET NULL
+users,sos_alerts,resolved_by_user_id,yes,SET NULL
+users,sos_alerts,assigned_to_user_id,yes,SET NULL
+users,sos_alerts,assigned_by_user_id,yes,SET NULL
+sos_alerts,sos_alert_events,alert_id,no,CASCADE
+users,sos_alert_events,actor_user_id,yes,SET NULL
+bookings,tasks,booking_id,no,CASCADE
+travellers,tasks,traveller_id,yes,SET NULL
+users,tasks,assigned_to_user_id,yes,SET NULL
+users,tasks,created_by_user_id,yes,SET NULL
+users,tasks,completed_by_user_id,yes,SET NULL
+tasks,task_events,task_id,no,CASCADE
+users,task_events,actor_user_id,yes,SET NULL
+users,notifications,user_id,yes,CASCADE
+users,notifications,actor_user_id,yes,SET NULL
+destinations,operators,destination_id,no,RESTRICT
+users,operators,vetted_by_user_id,yes,SET NULL
+bookings,operator_confirmations,booking_id,no,CASCADE
+operators,operator_confirmations,operator_id,no,RESTRICT
+itinerary_segments,operator_confirmations,itinerary_segment_id,yes,SET NULL
+users,operator_confirmations,created_by_user_id,yes,SET NULL
+users,operator_confirmations,updated_by_user_id,yes,SET NULL
+bookings,payment_schedules,booking_id,no,CASCADE
+users,payment_schedules,created_by_user_id,yes,SET NULL
+users,payment_schedules,updated_by_user_id,yes,SET NULL
+bookings,payments,booking_id,no,CASCADE
+payment_schedules,payments,payment_schedule_id,yes,SET NULL
+operator_confirmations,payments,operator_confirmation_id,yes,SET NULL
+users,payments,recorded_by_user_id,yes,SET NULL
+users,payments,updated_by_user_id,yes,SET NULL
+destinations,testimonials,destination_id,yes,CASCADE

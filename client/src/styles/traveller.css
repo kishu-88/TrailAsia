@@ -1,0 +1,600 @@
+/* ---------------------------------------------------------------------------
+   Traveller-facing screens.
+
+   Deliberately not styled like the staff portal. This is the surface a traveller
+   opens on a phone, possibly at altitude, possibly in a hurry, so it is laid out
+   as a narrow single column with large touch targets and a fixed bottom tab bar
+   — the shape people already know from every other app on their phone.
+
+   Constrained to a phone width even on desktop, because that is the device it is
+   for and pretending otherwise makes the demo misleading.
+   --------------------------------------------------------------------------- */
+
+.traveller-app {
+  min-height: 100%;
+  background: var(--colour-surface-sunken);
+  display: flex;
+  justify-content: center;
+}
+
+.traveller-frame {
+  width: 100%;
+  max-width: 460px;
+  background: var(--colour-bg);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  box-shadow: 0 0 40px rgba(16, 24, 40, 0.08);
+  position: relative;
+}
+
+/* --- Preview banner -------------------------------------------------------
+   Loud on purpose. Nobody should mistake a staff-authenticated preview for a
+   working traveller login. */
+
+.preview-banner {
+  background: var(--colour-warning-soft);
+  border-bottom: 1px solid rgba(138, 90, 0, 0.3);
+  color: var(--colour-warning);
+  padding: var(--space-2) var(--space-4);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.preview-banner strong {
+  display: block;
+}
+
+.preview-banner a {
+  color: inherit;
+}
+
+/* --- Header --------------------------------------------------------------- */
+
+.traveller-header {
+  background: var(--colour-primary);
+  color: #fff;
+  padding: var(--space-5) var(--space-4) var(--space-5);
+}
+
+.traveller-header__eyebrow {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+}
+
+.traveller-header__title {
+  margin: var(--space-1) 0 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.traveller-header__meta {
+  margin: var(--space-3) 0 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.traveller-header__countdown {
+  display: inline-block;
+  margin-top: var(--space-3);
+  padding: 4px var(--space-3);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* --- Content -------------------------------------------------------------- */
+
+.traveller-main {
+  flex: 1;
+  padding: var(--space-4);
+  padding-bottom: 88px; /* clears the fixed tab bar */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.t-card {
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.t-card__header {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--colour-border);
+}
+
+.t-card__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.t-card__body {
+  padding: var(--space-4);
+}
+
+.t-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--colour-border);
+  font-size: 14px;
+}
+
+.t-row:last-child {
+  border-bottom: 0;
+}
+
+.t-row__label {
+  color: var(--colour-text-muted);
+}
+
+.t-row__value {
+  font-weight: 500;
+  text-align: right;
+}
+
+/* --- Call-to-action buttons ----------------------------------------------
+   Minimum 48px tall. These get tapped with cold hands and gloves on. */
+
+.t-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 52px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-md);
+  background: var(--colour-surface);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  text-decoration: none;
+  color: var(--colour-text);
+  cursor: pointer;
+}
+
+.t-action:active {
+  background: var(--colour-surface-muted);
+}
+
+.t-action__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.t-action__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.t-action__label {
+  display: block;
+  font-weight: 500;
+}
+
+.t-action__hint {
+  display: block;
+  font-size: 12px;
+  color: var(--colour-text-muted);
+}
+
+.t-action--call {
+  border-color: var(--colour-primary);
+  color: var(--colour-primary);
+  font-weight: 600;
+}
+
+.t-action--sos {
+  border-color: var(--colour-danger);
+  background: var(--colour-danger-soft);
+  color: var(--colour-danger);
+  font-weight: 700;
+  min-height: 64px;
+  justify-content: center;
+  text-align: center;
+}
+
+.t-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* --- Status list ---------------------------------------------------------- */
+
+.t-status {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--colour-border);
+}
+
+.t-status:last-child {
+  border-bottom: 0;
+}
+
+.t-status__mark {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.t-status__mark--ok      { background: var(--colour-success); }
+.t-status__mark--pending { background: var(--colour-warning); }
+.t-status__mark--urgent  { background: var(--colour-danger); }
+
+.t-status__body { min-width: 0; }
+
+.t-status__label {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.t-status__meta {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--colour-text-muted);
+}
+
+.t-status__issues {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  font-size: 13px;
+  color: var(--colour-danger);
+}
+
+.t-status__sent,
+.t-status__reason {
+  margin: var(--space-2) 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.t-status__sent { color: var(--colour-text-muted); }
+.t-status__reason { color: var(--colour-danger); }
+
+/* The upload sits under the item it belongs to, the full width of the text
+   column, so there is never a question of which document a button is for. */
+.t-status__body { flex: 1; }
+
+.t-status__action {
+  margin-top: var(--space-3);
+  justify-content: center;
+  text-align: center;
+}
+
+.t-status .alert { margin-top: var(--space-3); }
+
+.t-upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--colour-surface-sunken);
+  border-radius: var(--radius-md);
+}
+
+.t-upload__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.t-upload__label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.t-upload__hint {
+  font-size: 12px;
+  color: var(--colour-text-muted);
+}
+
+/* 16px on purpose: iOS zooms the whole page when a focused input is smaller. */
+.t-upload input {
+  width: 100%;
+  min-height: 48px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-sm);
+  background: var(--colour-surface);
+  font: inherit;
+  font-size: 16px;
+  color: var(--colour-text);
+}
+
+.t-upload input[type='file'] { padding: var(--space-3); }
+
+.t-upload .alert { margin: 0; }
+
+/* --- Timeline ------------------------------------------------------------- */
+
+.t-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.t-leg {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--colour-border);
+}
+
+.t-leg:last-child { border-bottom: 0; }
+
+.t-leg__marker {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.t-leg__dot {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--colour-primary-soft);
+  color: var(--colour-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.t-leg__line {
+  flex: 1;
+  width: 2px;
+  background: var(--colour-border);
+  min-height: 12px;
+}
+
+.t-leg__body { flex: 1; min-width: 0; }
+
+.t-leg__title { font-weight: 600; font-size: 15px; }
+
+.t-leg__meta {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--colour-text-muted);
+}
+
+.t-leg__note {
+  margin: var(--space-2) 0 0;
+  font-size: 14px;
+}
+
+/* --- Banner --------------------------------------------------------------- */
+
+.t-banner {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border-left: 4px solid;
+  font-size: 14px;
+}
+
+.t-banner--ready {
+  background: var(--colour-success-soft);
+  border-left-color: var(--colour-success);
+  color: var(--colour-success);
+}
+
+.t-banner--action {
+  background: var(--colour-warning-soft);
+  border-left-color: var(--colour-warning);
+  color: var(--colour-warning);
+}
+
+.t-banner--advisory {
+  background: var(--colour-info-soft);
+  border-left-color: var(--colour-info);
+  color: var(--colour-info);
+}
+
+.t-banner__title {
+  margin: 0 0 var(--space-1);
+  font-weight: 700;
+}
+
+.t-banner p { margin: 0; }
+
+/* --- Not-built markers ---------------------------------------------------
+   Features from the business case that have no backend yet. Shown as visibly
+   inert rather than mocked up working, so a demo cannot accidentally imply the
+   safety module exists. */
+
+.t-unbuilt {
+  padding: var(--space-4);
+  border: 1px dashed var(--colour-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--colour-surface-muted);
+  color: var(--colour-text-muted);
+  font-size: 13px;
+}
+
+.t-unbuilt__label {
+  display: inline-block;
+  margin-bottom: var(--space-1);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--colour-surface-sunken);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* --- Bottom tabs ---------------------------------------------------------- */
+
+.t-tabs {
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  max-width: 460px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--colour-surface);
+  border-top: 1px solid var(--colour-border);
+  z-index: 30;
+}
+
+.t-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-2) 0 calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+  min-height: 56px;
+  justify-content: center;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  color: var(--colour-text-muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.t-tab__icon { font-size: 18px; line-height: 1; }
+
+.t-tab--active {
+  color: var(--colour-primary);
+  font-weight: 600;
+}
+
+.t-tab__badge {
+  position: absolute;
+  transform: translate(14px, -10px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--colour-danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.t-section-title {
+  margin: var(--space-2) 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--colour-text-muted);
+}
+
+/* --- Sign-in and activation ------------------------------------------------
+   Same phone-shaped frame, without the tab bar. A traveller signing in has
+   nothing to navigate to yet, so the shell is just the form and the reason
+   they are being asked for a password at all. */
+
+.traveller-frame--auth {
+  justify-content: center;
+  padding: var(--space-6) var(--space-5);
+  gap: var(--space-5);
+}
+
+.traveller-auth__header {
+  text-align: center;
+}
+
+.traveller-auth__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--colour-primary);
+}
+
+.traveller-auth__subtitle {
+  margin: var(--space-2) 0 0;
+  color: var(--colour-text-muted);
+  font-size: 14px;
+}
+
+.traveller-auth__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.traveller-auth__note {
+  margin: 0;
+  color: var(--colour-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.traveller-header__signout {
+  float: right;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  opacity: 0.85;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- Safety controls -------------------------------------------------------
+   The armed SOS is a different colour from the resting one, not just different
+   text. Somebody reaching for it in a hurry should be able to tell the two
+   states apart without reading. */
+
+.t-action--primary {
+  border-color: var(--colour-primary);
+  background: var(--colour-primary);
+  color: #fff;
+  justify-content: center;
+}
+
+.t-action--primary .t-action__hint {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.t-action--sos-armed {
+  background: var(--colour-danger);
+  border-color: var(--colour-danger);
+  color: #fff;
+  animation: t-sos-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes t-sos-pulse {
+  50% { opacity: 0.82; }
+}
+
+/* Respect a reduced-motion preference — a pulsing emergency button is exactly
+   the kind of movement people turn that setting on to avoid. */
+@media (prefers-reduced-motion: reduce) {
+  .t-action--sos-armed { animation: none; }
+}
+
+.t-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--colour-text-muted);
+}

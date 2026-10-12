@@ -4,8 +4,9 @@ React single-page application. Serves the **staff portal** (consultants, coordin
 management) and the **traveller-facing views** (safety, insurance, fair-price guide, booking
 details) against the same REST API.
 
-> **Status:** sign-in, session handling and route guards are built. Every business module is
-> still folders.
+> **Status:** sign-in, dashboard, bookings, travellers, destinations and staff admin are built,
+> with working create/edit forms throughout. Ground operators, payments, tasks, reporting and the
+> traveller safety module are not started.
 
 ---
 
@@ -39,15 +40,16 @@ in production. Sign in with the account created by the server's `npm run db:seed
 | ----------------- | ---------------------------------------------------------------------------- |
 | `public/`         | Static files copied verbatim to the build output — favicon, robots.txt        |
 | `src/assets/`     | Images, icons and fonts imported by components                                |
-| `src/components/` | Reusable presentational components with no business logic                     |
-| `src/context/`    | React context providers — `AuthContext` today; currency and feature flags later |
+| `src/components/common/` | The shared kit — `Button`, `Card`, `DataTable`, `Field`, `Modal`, `Badge`, `Pagination`, `EmptyState`, `ErrorNotice`, `Spinner` |
+| `src/components/layout/` | `AppLayout` (sidebar + top bar), `Sidebar`, `PageHeader`               |
+| `src/context/`    | `AuthContext` (session) and `ToastContext` (brief confirmations)              |
 | `src/features/`   | One folder per business module; see below                                     |
-| `src/hooks/`      | Custom hooks                                                                  |
+| `src/hooks/`      | `useAsync` (one call) and `useList` (paginated, filtered list)                |
 | `src/pages/`      | Route-level screens that compose features and components                      |
 | `src/routes/`     | Router configuration and `ProtectedRoute`                                     |
 | `src/services/`   | API client and per-resource wrappers                                          |
 | `src/styles/`     | Global stylesheet, CSS variables, spacing and colour tokens                   |
-| `src/utils/`      | Pure helpers — date/currency formatting, validation, sorting                  |
+| `src/utils/`      | `format.js` (dates, money, labels) and `permissions.js` (role checks)         |
 
 ### Feature folders
 
@@ -87,6 +89,25 @@ booking is never interrupted by a failed request.
 **`src/routes/ProtectedRoute.jsx`** — redirects anonymous visitors to `/login`, remembering where
 they were headed so sign-in can send them back.
 
+### Two sessions, not one
+
+There is a second session for travellers, in `TravellerAuthContext` / `TravellerRoute`, and
+`apiClient` keeps the two tokens in **separate slots** rather than one "current token".
+
+A consultant checking what their traveller sees holds both at once, and a single slot would mean
+whichever they used last silently signed them out of the other. Each slot refreshes against its
+own endpoint and its own cookie. Traveller calls go through `travellerApi` (or `{ scope:
+'traveller' }`); everything else defaults to the staff slot, so no existing service changed.
+
+```js
+import { travellerApi } from '../../services/apiClient.js';
+const trip = await travellerApi.get('/me/trips/12');
+```
+
+The traveller provider is mounted by `routes/TravellerSession.jsx` around the `/trip` routes only
+— putting it in `main.jsx` next to the staff one would fire a traveller refresh on every staff
+page load, for a session nobody on that screen is using.
+
 `useAuth()` is the only thing a screen needs:
 
 ```jsx
@@ -107,7 +128,70 @@ const bookings = await api.get('/bookings');
 ```
 
 Errors arrive as `ApiError` with `status`, `code` and — on validation failures — a `details`
-object keyed by field name, which is what `LoginPage` renders inline.
+object keyed by field name. Every form maps those straight onto its fields, so a rejected
+`returnDate` appears under the return date rather than as a banner the user has to decode.
+
+**`apiClient` returns the whole envelope**, not `payload.data`. Unwrapping here would read more
+nicely at the call site but would silently drop `meta`, and a list screen that loses its
+pagination looks exactly like an empty database — which is precisely the bug that showed up the
+first time this was wired up. The services in `src/services/` do the unwrapping, since they are
+the layer whose job is knowing the API's shape.
+
+## Screens
+
+| Route | What it does |
+| ----- | ------------ |
+| `/` | Dashboard — next departures, open enquiries |
+| `/bookings` | Pipeline list with status, search and departure filters |
+| `/bookings/:id` | Detail: status workflow, itinerary builder, party, document readiness |
+| `/travellers` | Directory, with a passport-expiry warning under six months |
+| `/travellers/:id` | Profile, documents, verification, and an ad-hoc checklist runner |
+| `/destinations` | Reference data list |
+| `/destinations/:id` | Detail and the document requirements that drive every checklist |
+| `/tasks` | The shared work queue — mine, overdue, unassigned, everything open; handovers |
+| `/safety` | Safety desk — open SOS alerts, acknowledge and close. Every staff role can read it |
+| `/staff` | Admin only — accounts, deactivation, password reset |
+
+### The top bar
+
+`NotificationBell.jsx` polls `/notifications/unread-count` every 60 seconds and only fetches
+the list when the panel is opened — a closed bell costs a count, not a feed. It fails quietly:
+if the API is unreachable the bell shows nothing rather than putting an error on every screen.
+
+### The traveller app
+
+| Route | What it does |
+| ----- | ------------ |
+| `/trip/sign-in` | Traveller sign-in — phone-shaped, separate from the staff `/login` |
+| `/trip/activate?token=…` | Set a password from an invitation link |
+| `/trip` · `/trip/:bookingId` | Their trip, documents, safety and help |
+| `/preview/trip/:bookingId/:travellerId` | Staff preview of the above, with the safety controls **inert** |
+
+The preview is not a smaller version of the traveller app — it is the same components reading the
+staff API, and the SOS and consent controls are deliberately dead in it. A consultant must not be
+able to consent to location sharing, or raise a real alert, on somebody else's behalf. `TripSafety`
+takes a `live` prop and renders `SafetyControls` only under a traveller's own session.
+
+## State and data fetching
+
+Two hooks cover nearly everything:
+
+- **`useAsync(fn, deps)`** — one call, with `data`, `loading`, `error` and `reload`. Ignores a
+  resolution that lands after the component unmounts.
+- **`useList(fetcher, { initialFilters })`** — a paginated, filtered list. Resets to page 1 when
+  a filter changes, because filtering down to three results while sitting on page 4 shows an
+  empty screen and looks like a bug.
+
+There is no global store. Screens own their data and pass it down; the only shared state is the
+session and the toast queue. Add one when two distant screens genuinely need the same live data,
+not before.
+
+## Permissions
+
+`utils/permissions.js` mirrors `server/src/middleware/requireRole.js` and decides what the
+interface *offers* — which buttons render, which nav items appear. It is a courtesy, not a
+security control: anyone can edit those values in their browser, and doing so earns them a 403.
+The server checks every request independently. **If a rule changes, change the server first.**
 
 ---
 

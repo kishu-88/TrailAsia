@@ -105,7 +105,9 @@ a name and a phone number, and the record should not have to be complete to exis
       "altitudeCoverMetres": 6000,
       "insurerContactPhone": "+61 2 5550 1234",
       "verifiedAt": "2026-08-27T05:00:00.000Z",
-      "verifiedBy": { "id": "3", "fullName": "Bibek Chaudhary" }
+      "verifiedBy": { "id": "3", "fullName": "Bibek Chaudhary" },
+      "operatorConfirmationId": "12",
+      "operatorConfirmation": { "id": "12", "summary": "Sagarmatha national park permit", "status": "confirmed" }
     }
   ]
 }
@@ -114,6 +116,19 @@ a name and a phone number, and the record should not have to be complete to exis
 `status` is what a human last set. `effectiveStatus` is what is actually true right now:
 a document past its expiry reports `expired` no matter what the stored status says,
 because a verified-but-expired policy is not cover.
+
+`operatorConfirmationId`/`operatorConfirmation` are only present when the
+document was obtained through a ground-operator arrangement — a permit,
+mainly — and are `null`/absent otherwise. The same link shows up the other
+way on `GET /operators/bookings/:id/readiness`, under each confirmation's
+own `documents` array (there's no `docs/api/operators.md` yet — this
+endpoint and the rest of the operators API are documented only in
+`operator.service.js` and `operator.controller.js` themselves).
+
+Every row also carries `filePath` (an external link, if that's what was
+given instead of a file), `hasFile`, `fileName`, `fileMimeType` and
+`fileSizeBytes` — see the upload/download endpoints below. Never a raw path
+into the upload directory; that's retrieved by document id, not by name.
 
 ### `POST /travellers/:id/documents`
 
@@ -139,6 +154,13 @@ Changing anything substantive — `type`, `reference`, `issuer`, `expiresOn`,
 `submitted`** and clears the verification. Otherwise someone could get a policy verified
 and then edit its altitude cover downward, and the checklist would still show a tick.
 
+`operatorConfirmationId` can also be set (or cleared with `null`) here, to
+link or unlink the document from a ground-operator arrangement. It must
+point to an existing confirmation (`INVALID_OPERATOR_CONFIRMATION`
+otherwise) and is deliberately **not** one of the substantive fields above —
+relinking a permit to the right confirmation doesn't mean its content needs
+re-checking.
+
 ### `POST /travellers/:id/documents/:documentId/verify`
 
 Coordinator or admin.
@@ -150,7 +172,32 @@ Coordinator or admin.
 Sets `verified` or `rejected`, and stamps who and when. `400 DOCUMENT_EXPIRED` if the
 document has already expired.
 
+### `POST /travellers/:id/documents/:documentId/file`
+
+`multipart/form-data`, one `file` field (PDF, JPEG, PNG or WebP, capped at
+`UPLOAD_MAX_BYTES`). Attaches a file to a document row created via `POST
+.../documents` above — metadata first, file second, the same two steps
+whether the file comes from staff or from the traveller themselves via `POST
+/me/documents` ([`auth.md`](auth.md)). Stored on disk under `UPLOAD_DIR`,
+named by a random id — never the uploaded filename. Replaces any previous
+file on that document (the old one is deleted only after the new one is
+safely written), and — like `PATCH` above — drops a `verified` document back
+to `submitted`, since a new file is exactly the kind of substantive change
+that invalidates a prior verification.
+
+```json
+{ "data": { "document": { "id": "40", "hasFile": true,
+            "fileName": "policy.pdf", "fileMimeType": "application/pdf",
+            "fileSizeBytes": 88213, "status": "submitted" } } }
+```
+
+### `GET /travellers/:id/documents/:documentId/file`
+
+Downloads the file attached above. `404` if the document has none yet.
+
 ### `DELETE /travellers/:id/documents/:documentId`
+
+Also removes its uploaded file from disk, if it has one.
 
 ---
 
@@ -203,9 +250,41 @@ trip, and by when?*
 - `dueBy` — departure minus the requirement's `leadTimeDays`.
 - `overdue` — past `dueBy` and still not satisfied.
 - `summary.ready` — every **mandatory** item satisfied.
+- **Which document** — a document counts for a requirement when its type matches and
+  it is either for that destination or has no destination (a passport is a passport).
+  When a traveller holds more than one, a `verified` one with no issues wins and the
+  item is satisfied. Otherwise the item describes the **newest**, so a replacement for
+  a rejected or expiring document shows as `submitted` rather than the old one still
+  failing. `documentId` says which one was used.
 
 The altitude and insurer-contact checks are the ones worth understanding. A traveller
 can hold a real, unexpired, verified policy and still be unprotected on a 5,364m pass if
 the policy stops at 4,000m. The checklist says so, in the specific, before departure —
 which is the difference between the platform being paperwork and being the thing that
 stops a coordinator authorising an evacuation nobody can pay for.
+
+
+---
+
+## Portal access
+
+| Endpoint | Roles | Does |
+| --- | --- | --- |
+| `POST /travellers/:id/portal-invite` | `consultant`, `coordinator`, `admin` | Issues a single-use invitation; returns the link once |
+| `DELETE /travellers/:id/portal-access` | `consultant`, `coordinator`, `admin` | Withdraws access and ends every live session |
+
+Not admin-only. The consultant who set the booking up is the person the traveller
+rings when the link does not work, and routing that through an administrator adds a
+delay without adding a check — the consultant already has full access to the record
+the portal exposes.
+
+Every traveller payload carries a `portal` block for the staff screens:
+
+```jsonc
+"portal": { "state": "active",        // not_invited | invited | invite_expired | active | suspended
+            "enabled": true, "invitedAt": "…", "inviteExpiresAt": "…",
+            "activatedAt": "…", "lastLoginAt": "…", "lockedUntil": null }
+```
+
+Full detail, including what a traveller can see once they are in, is in
+[`auth.md`](auth.md#traveller-sessions).

@@ -24,6 +24,16 @@ process.env.API_PREFIX = '/api/v1';
 // would. The per-account lockout — the protection that actually matters — is
 // left at its production value and is exercised in auth.test.js.
 process.env.LOGIN_RATE_LIMIT_MAX = '100000';
+// Same reasoning for the public enquiry form: one test file submits several
+// enquiries from the same address, far more than the production ceiling.
+process.env.PUBLIC_ENQUIRY_RATE_LIMIT_MAX = '100000';
+// File uploads write real bytes to real disk even under test — there is no
+// in-memory equivalent for this the way SQLite stands in for MySQL. A small
+// ceiling (2 KB) keeps the "too large" test's fixture tiny, and a directory
+// of its own (removed in `afterAll` below) keeps test runs from leaving
+// files in the `uploads/` a real deployment would actually use.
+process.env.UPLOAD_MAX_BYTES = '2048';
+process.env.UPLOAD_DIR = './uploads-test';
 
 // Point the test config at SQLite before any model is loaded.
 const config = require('../src/config/config');
@@ -51,4 +61,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.sequelize.close();
+  // eslint-disable-next-line global-require -- only needed here, at teardown
+  await require('fs/promises').rm(require('path').resolve(__dirname, '..', 'uploads-test'), {
+    recursive: true,
+    force: true,
+  });
 });

@@ -2,7 +2,7 @@ import { api, refreshSession, setAccessToken } from './apiClient.js';
 
 /** Sign in with email and password. Returns { user, accessToken, expiresIn }. */
 export async function login(email, password) {
-  const data = await api.post('/auth/login', { email, password }, { auth: false });
+  const { data } = await api.post('/auth/login', { email, password }, { auth: false });
   setAccessToken(data.accessToken);
   return data;
 }
@@ -24,6 +24,6 @@ export async function logout() {
 }
 
 export async function fetchCurrentUser() {
-  const data = await api.get('/auth/me');
+  const { data } = await api.get('/auth/me');
   return data.user;
 }

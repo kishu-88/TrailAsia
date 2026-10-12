@@ -7,10 +7,19 @@ const {
   TravellerDocument,
   Destination,
   DocumentRequirement,
+  OperatorConfirmation,
   User,
 } = require('../models');
 const ApiError = require('../utils/ApiError');
 const { parseListQuery, paginated } = require('../utils/pagination');
+const notificationService = require('./notification.service');
+const fileStorage = require('./fileStorage.service');
+// Required lazily inside verifyDocument, not at module load: task.service ->
+// booking.service -> traveller.service is already a cycle, and requiring it
+// up here would hand booking.service a half-built traveller.service export
+// (Node resolves a cyclic require to whatever the module has exported so
+// far, which at that point is nothing yet).
+const taskService = () => require('./task.service');
 
 const SORTABLE = ['createdAt', 'lastName', 'firstName', 'email', 'passportExpiry'];
 
@@ -96,6 +105,7 @@ async function listDocuments(travellerId) {
     include: [
       { model: Destination, as: 'destination', required: false },
       { model: User, as: 'verifiedBy', required: false },
+      { model: OperatorConfirmation, as: 'operatorConfirmation', required: false },
     ],
     order: [
       ['type', 'ASC'],
@@ -109,10 +119,22 @@ async function getDocument(id) {
     include: [
       { model: Destination, as: 'destination', required: false },
       { model: User, as: 'verifiedBy', required: false },
+      { model: OperatorConfirmation, as: 'operatorConfirmation', required: false },
     ],
   });
   if (!document) throw ApiError.notFound('Document not found.');
   return document;
+}
+
+async function assertConfirmationExists(operatorConfirmationId) {
+  if (!operatorConfirmationId) return;
+  const confirmation = await OperatorConfirmation.findByPk(operatorConfirmationId);
+  if (!confirmation) {
+    throw ApiError.badRequest('That operator confirmation does not exist.', {
+      code: 'INVALID_OPERATOR_CONFIRMATION',
+      details: { operatorConfirmationId: 'Not found.' },
+    });
+  }
 }
 
 async function addDocument(travellerId, payload) {
@@ -126,12 +148,14 @@ async function addDocument(travellerId, payload) {
       });
     }
   }
+  await assertConfirmationExists(payload.operatorConfirmationId);
   const created = await TravellerDocument.create({ ...payload, travellerId });
   return getDocument(created.id);
 }
 
 async function updateDocument(id, changes) {
   const document = await getDocument(id);
+  await assertConfirmationExists(changes.operatorConfirmationId);
 
   // Editing the substance of a document invalidates a previous verification —
   // otherwise someone could get a policy verified and then change its altitude
@@ -174,12 +198,69 @@ async function verifyDocument(id, { approved, notes }, actingUser) {
     notes: notes !== undefined ? notes : document.notes,
   });
 
+  // The consultant who entered the record is the one waiting on this answer —
+  // verification is deliberately somebody else's job, so they would otherwise
+  // have to keep checking.
+  const traveller = await getById(document.travellerId);
+  await notificationService.documentReviewed(document, traveller, approved, actingUser);
+  // Whoever this was assigned to for review is done once it has an answer,
+  // whichever way it went — a rejected document gets a fresh review task
+  // (and a fresh assignment) only if someone deliberately raises one.
+  await taskService().closeDocumentReviewTask(document.id, actingUser);
+
   return getDocument(id);
 }
 
 async function deleteDocument(id) {
   const document = await getDocument(id);
+  await fileStorage.remove(document.storedFileName);
   await document.destroy();
+}
+
+/**
+ * Attach (or replace) an uploaded file on an existing document row.
+ *
+ * A previous file, if there was one, is deleted from disk only after the new
+ * one is safely written and the row updated — so a failed upload never
+ * leaves the document pointing at nothing. Attaching a file is a substantive
+ * change to what the document actually is, so it invalidates a previous
+ * verification the same way editing its reference or expiry does.
+ */
+async function attachDocumentFile(id, file) {
+  const document = await getDocument(id);
+  const stored = await fileStorage.store({
+    travellerId: document.travellerId,
+    buffer: file.buffer,
+    mimeType: file.mimetype,
+    originalName: file.originalname,
+  });
+
+  const changes = {
+    storedFileName: stored.storedFileName,
+    originalFileName: stored.originalFileName,
+    fileMimeType: stored.mimeType,
+    fileSizeBytes: stored.sizeBytes,
+  };
+  if (document.status === 'verified') {
+    changes.status = 'submitted';
+    changes.verifiedAt = null;
+    changes.verifiedByUserId = null;
+  }
+
+  const previousFileName = document.storedFileName;
+  await document.update(changes);
+  await fileStorage.remove(previousFileName);
+
+  return getDocument(id);
+}
+
+/** The absolute path to a document's uploaded file, or null if it has none. */
+async function getDocumentFilePath(id) {
+  const document = await getDocument(id);
+  if (!document.storedFileName) {
+    throw ApiError.notFound('This document has no uploaded file.');
+  }
+  return { document, absolutePath: fileStorage.resolvePath(document.storedFileName) };
 }
 
 // --- Document checklist ----------------------------------------------------
@@ -235,12 +316,59 @@ async function buildChecklist({
     for (const requirement of destination.documentRequirements || []) {
       // A document counts if the type matches and it is either for this
       // destination or not destination-specific (a passport is a passport).
-      const held = documents.find(
-        (doc) =>
-          doc.type === requirement.type &&
-          (doc.destinationId === null ||
-            String(doc.destinationId) === String(destination.id))
-      );
+      // Newest first: when none of them will do, the latest is the one worth
+      // reporting on.
+      const candidates = documents
+        .filter(
+          (doc) =>
+            doc.type === requirement.type &&
+            (doc.destinationId === null ||
+              String(doc.destinationId) === String(destination.id))
+        )
+        .sort((a, b) => Number(b.id) - Number(a.id));
+
+      /** What one document does for this requirement: its status, and what is wrong with it. */
+      const assess = (doc) => {
+        const problems = [];
+
+        if (doc.expiresOn) {
+          if (requirement.type === 'passport') {
+            checkPassportValidity(doc.expiresOn, requirement, returnDate, problems);
+          } else if (departureDate && doc.expiresOn < toDateOnly(departureDate)) {
+            problems.push('Expires before departure.');
+          }
+        }
+
+        if (requirement.requiresAltitudeCover) {
+          const needed = maxAltitudeMetres || destination.maxAltitudeMetres;
+          if (!doc.altitudeCoverMetres) {
+            problems.push('Policy does not state an altitude limit.');
+          } else if (needed && doc.altitudeCoverMetres < needed) {
+            problems.push(
+              `Altitude cover is ${doc.altitudeCoverMetres.toLocaleString('en-AU')} m ` +
+                `but the itinerary reaches ${needed.toLocaleString('en-AU')} m.`
+            );
+          }
+          if (!doc.insurerContactPhone) {
+            problems.push('No insurer contact number recorded.');
+          }
+        }
+
+        return { doc, status: doc.effectiveStatus(), problems };
+      };
+
+      // Any one document that fully meets the requirement meets it. Otherwise
+      // the newest is what the checklist describes — so a traveller who
+      // replaces a rejected or expiring document sees the replacement being
+      // checked, not the old one still failing. Taking simply the first match,
+      // as this used to, reported whichever row the database happened to
+      // return first, which made a re-upload invisible.
+      const assessed = candidates.map(assess);
+      const chosen =
+        assessed.find((entry) => entry.status === 'verified' && entry.problems.length === 0) ||
+        assessed[0] ||
+        null;
+      const held = chosen ? chosen.doc : null;
 
       const issues = [];
       let status;
@@ -256,29 +384,8 @@ async function buildChecklist({
           status = 'missing';
         }
       } else {
-        status = held.effectiveStatus();
-
-        if (held.expiresOn) {
-          if (requirement.type === 'passport') {
-            checkPassportValidity(held.expiresOn, requirement, returnDate, issues);
-          } else if (departureDate && held.expiresOn < toDateOnly(departureDate)) {
-            issues.push('Expires before departure.');
-          }
-        }
-
-        if (requirement.requiresAltitudeCover) {
-          const needed = maxAltitudeMetres || destination.maxAltitudeMetres;
-          if (!held.altitudeCoverMetres) {
-            issues.push('Policy does not state an altitude limit.');
-          } else if (needed && held.altitudeCoverMetres < needed) {
-            issues.push(
-              `Altitude cover is ${held.altitudeCoverMetres}m but the itinerary reaches ${needed}m.`
-            );
-          }
-          if (!held.insurerContactPhone) {
-            issues.push('No insurer contact number recorded.');
-          }
-        }
+        status = chosen.status;
+        issues.push(...chosen.problems);
       }
 
       const dueBy = departureDate
@@ -347,9 +454,21 @@ function checkPassportValidity(expiry, requirement, returnDate, issues) {
     issues.push(
       `Passport must be valid for ${months} months beyond ${
         returnDate ? 'the return date' : 'today'
-      } (until ${toDateOnly(requiredUntil)}).`
+      } — until ${formatReadableDate(requiredUntil)}.`
     );
   }
+}
+
+/**
+ * These strings are shown to travellers, not only to staff, so a bare ISO date
+ * is the wrong output. "15 April 2027" needs no decoding on a phone.
+ */
+function formatReadableDate(date) {
+  return date.toLocaleDateString('en-AU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 module.exports = {
@@ -365,5 +484,7 @@ module.exports = {
   updateDocument,
   verifyDocument,
   deleteDocument,
+  attachDocumentFile,
+  getDocumentFilePath,
   buildChecklist,
 };

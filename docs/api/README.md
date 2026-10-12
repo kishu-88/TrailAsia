@@ -9,6 +9,10 @@ Base URL: `/api/v1` · All requests and responses are JSON.
 | Destinations and document requirements | [`destinations.md`](destinations.md) |
 | Travellers and their documents | [`travellers.md`](travellers.md) |
 | Bookings and itineraries | [`bookings.md`](bookings.md) |
+| Tasks and handovers | [`tasks.md`](tasks.md) |
+| Notifications — the top-bar bell | [`notifications.md`](notifications.md) |
+| Traveller safety — consent, location, SOS | [`safety.md`](safety.md) |
+| Public site (TrailAsia Book) — no auth | [`public.md`](public.md) |
 
 ---
 
@@ -47,8 +51,17 @@ messages inline rather than showing one banner for the whole submission.
 
 ## Authentication
 
-Every endpoint except `/auth/login` and `/auth/refresh` needs
-`Authorization: Bearer <accessToken>`. See [`auth.md`](auth.md).
+Every endpoint except `/auth/login`, `/auth/refresh`, `/auth/traveller/login`,
+`/auth/traveller/activate`, `/auth/traveller/refresh`, and everything under
+`/public` needs `Authorization: Bearer <accessToken>`. See
+[`auth.md`](auth.md) and, for the unauthenticated public site,
+[`public.md`](public.md).
+
+There are **two kinds of session**, and a token of one kind is refused by the other's
+routes. Staff tokens carry `scope: "staff"`; traveller tokens, issued under
+`/auth/traveller`, carry `scope: "traveller"` and reach only `/me/*` and
+`/safety/me/*`. The scope claim matters because `sub` is a primary key and staff and
+travellers are numbered in separate tables.
 
 ## Roles
 
@@ -58,6 +71,7 @@ Every endpoint except `/auth/login` and `/auth/refresh` needs
 | `coordinator` | Everything a consultant can, plus destinations, document requirements, and **verifying** documents. |
 | `finance` | Read-only across bookings and travellers. Passport numbers stay masked. |
 | `admin` | Everything, including staff accounts. |
+| *(traveller)* | Not a staff role. Their own trip, documents, location consent and SOS — nothing else. |
 
 Document verification is deliberately kept away from consultants: the person who
 enters an insurance policy should not be the person who attests that it is real.

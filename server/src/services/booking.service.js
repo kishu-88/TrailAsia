@@ -12,8 +12,10 @@ const {
   sequelize,
 } = require('../models');
 const ApiError = require('../utils/ApiError');
+const env = require('../config/env');
 const { parseListQuery, paginated } = require('../utils/pagination');
 const travellerService = require('./traveller.service');
+const notificationService = require('./notification.service');
 
 const SORTABLE = ['createdAt', 'departureDate', 'reference', 'status', 'title'];
 
@@ -178,6 +180,194 @@ async function attachTravellers(booking, travellerIds, transaction) {
   );
 }
 
+// --- Public enquiries (TrailAsia Book) --------------------------------------
+//
+// A booking created by a stranger, not a consultant. It has to fit the same
+// model as staff-created bookings — `consultantId` is `allowNull: false`, and
+// nothing else in the codebase (reports, the pipeline board) expects a
+// booking without one — so this does not relax that column. Instead it picks
+// an owner automatically and drops the booking straight into the same
+// `enquiry` stage a phone call would start at, so a consultant works it
+// through the existing pipeline rather than a parallel one.
+
+/**
+ * A traveller record for whoever just submitted the form.
+ *
+ * Matched by email, since that is the only identifier a stranger reliably
+ * has. Returns the existing record if one exists rather than creating a
+ * duplicate for someone who has enquired before — the same person emailing
+ * twice should be one lead, not two.
+ */
+async function findOrCreateEnquiryTraveller(details, transaction) {
+  const email = String(details.email).trim().toLowerCase();
+  const existing = await Traveller.findOne({ where: { email }, transaction });
+  if (existing) return existing;
+
+  return Traveller.create(
+    {
+      firstName: details.firstName,
+      lastName: details.lastName,
+      email,
+      phone: details.phone || null,
+    },
+    { transaction }
+  );
+}
+
+/**
+ * Who a public enquiry is assigned to.
+ *
+ * `PUBLIC_ENQUIRY_CONSULTANT_ID` wins if it is set and still points at an
+ * active account. Otherwise the first active consultant, then the first
+ * active admin — in that order, so a small agency running on just an admin
+ * account still has somewhere for enquiries to land instead of failing to
+ * boot the feature at all.
+ */
+async function pickIntakeConsultant() {
+  if (env.publicEnquiry.defaultConsultantId) {
+    const configured = await User.findByPk(env.publicEnquiry.defaultConsultantId);
+    if (configured && configured.isActive) return configured;
+  }
+
+  const consultant = await User.findOne({
+    where: { isActive: true, role: 'consultant' },
+    order: [['id', 'ASC']],
+  });
+  if (consultant) return consultant;
+
+  const admin = await User.findOne({
+    where: { isActive: true, role: 'admin' },
+    order: [['id', 'ASC']],
+  });
+  if (admin) return admin;
+
+  // Not the enquirer's fault — nobody to hand it to is a staffing gap, not a
+  // bad request. Left as a plain Error so it reports as a 500, the same as
+  // any other bug, rather than a 400 that implies the caller did something
+  // wrong.
+  throw new Error(
+    'No active staff account is available to receive a public booking enquiry. ' +
+      'Set PUBLIC_ENQUIRY_CONSULTANT_ID or make sure at least one consultant or admin account is active.'
+  );
+}
+
+async function createPublicEnquiry(payload) {
+  const destination = await Destination.findOne({
+    where: { id: payload.destinationId, isActive: true },
+  });
+  if (!destination) {
+    throw ApiError.badRequest('That destination is not available.', {
+      code: 'INVALID_DESTINATION',
+      details: { destinationId: 'Not found or inactive.' },
+    });
+  }
+
+  // Additional legs, if the enquirer picked more than one destination.
+  // Silently deduplicated against the lead destination and each other — a
+  // double-click on the same checkbox should not raise a validation error on
+  // a form nobody is watching for one.
+  const additionalIds = [...new Set((payload.additionalDestinationIds || []).map(String))].filter(
+    (id) => id !== String(destination.id)
+  );
+  let additionalDestinations = [];
+  if (additionalIds.length > 0) {
+    additionalDestinations = await Destination.findAll({
+      where: { id: { [Op.in]: additionalIds }, isActive: true },
+    });
+    if (additionalDestinations.length !== additionalIds.length) {
+      throw ApiError.badRequest('One of the additional destinations is not available.', {
+        code: 'INVALID_DESTINATION',
+        details: { additionalDestinationIds: 'One or more not found or inactive.' },
+      });
+    }
+  }
+
+  const consultant = await pickIntakeConsultant();
+
+  // Retry once on the (unlikely) reference collision — same reasoning as create().
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let bookingId;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      bookingId = await sequelize.transaction(async (transaction) => {
+        const traveller = await findOrCreateEnquiryTraveller(payload, transaction);
+        const reference = await nextReference(transaction);
+
+        const created = await Booking.create(
+          {
+            reference,
+            title: `${destination.name} enquiry — ${traveller.fullName()}`,
+            consultantId: consultant.id,
+            leadTravellerId: traveller.id,
+            departureDate: payload.departureDate || null,
+            returnDate: payload.returnDate || null,
+            partySize: payload.partySize || 1,
+            currencyCode: destination.currencyCode,
+            notes: payload.message || null,
+          },
+          { transaction }
+        );
+
+        await BookingTraveller.create(
+          { bookingId: created.id, travellerId: traveller.id, isLead: true },
+          { transaction }
+        );
+
+        const legs = [destination, ...additionalDestinations];
+        for (let index = 0; index < legs.length; index += 1) {
+          const leg = legs[index];
+          // eslint-disable-next-line no-await-in-loop
+          await ItinerarySegment.create(
+            {
+              bookingId: created.id,
+              destinationId: leg.id,
+              sequence: index + 1,
+              title: `${leg.name} — enquiry`,
+              description: index === 0 ? payload.message || null : null,
+              startDate: payload.departureDate || null,
+              endDate: payload.returnDate || null,
+            },
+            { transaction }
+          );
+        }
+
+        return created.id;
+      });
+    } catch (error) {
+      if (error.name === 'SequelizeUniqueConstraintError' && attempt < 2) continue;
+      throw error;
+    }
+
+    const booking = await getById(bookingId);
+
+    await notificationService.notify({
+      recipients: [consultant],
+      type: 'booking_enquiry_received',
+      severity: 'info',
+      title: `New enquiry — ${leadTravellerName(booking)}`,
+      body: (() => {
+        const place =
+          additionalDestinations.length > 0
+            ? `${destination.name} + ${additionalDestinations.length} more`
+            : destination.name;
+        return payload.message
+          ? `${place}: ${payload.message.slice(0, 300)}`
+          : `${place} — submitted through the public site.`;
+      })(),
+      link: `/bookings/${booking.id}`,
+      dedupeKey: `booking:${booking.id}:enquiry_received`,
+    });
+
+    return booking;
+  }
+
+  throw new Error('Could not allocate a booking reference.');
+}
+
+function leadTravellerName(booking) {
+  return booking.leadTraveller ? booking.leadTraveller.fullName() : booking.title;
+}
+
 async function update(id, changes) {
   const booking = await getById(id, { detailed: false });
 
@@ -217,7 +407,7 @@ async function update(id, changes) {
   return getById(id);
 }
 
-async function cancel(id, reason) {
+async function cancel(id, reason, actingUser = null) {
   const booking = await getById(id, { detailed: false });
   if (booking.status === 'cancelled') {
     throw ApiError.badRequest('This booking is already cancelled.', {
@@ -234,6 +424,10 @@ async function cancel(id, reason) {
     cancelledAt: new Date(),
     cancellationReason: reason,
   });
+
+  // The consultant and coordinator on the trip, minus whoever pressed cancel.
+  await notificationService.bookingCancelled(booking, actingUser, reason);
+
   return getById(id);
 }
 
@@ -481,6 +675,7 @@ module.exports = {
   list,
   getById,
   create,
+  createPublicEnquiry,
   update,
   cancel,
   addTraveller,

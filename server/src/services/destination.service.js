@@ -2,7 +2,7 @@
 
 const { Op } = require('sequelize');
 
-const { Destination, DocumentRequirement, ItinerarySegment } = require('../models');
+const { Destination, DocumentRequirement, ItinerarySegment, Testimonial } = require('../models');
 const ApiError = require('../utils/ApiError');
 const { parseListQuery, paginated } = require('../utils/pagination');
 
@@ -29,6 +29,70 @@ async function list(query) {
   });
 
   return paginated(result, options, (row) => row.toJSON());
+}
+
+// --- Public (TrailAsia Book) ------------------------------------------------
+//
+// The public booking site browses destinations without an account. It gets a
+// deliberately narrower shape than the staff endpoint: marketing fields only,
+// active destinations only. Not because the rest is secret, but because a
+// shape that happens to be safe today becomes unsafe the first time somebody
+// adds an internal field to the staff one for a staff screen — the same
+// reasoning `/me/trips` uses for the traveller's own view of a booking.
+function toPublicMarketing(destination) {
+  return {
+    id: String(destination.id),
+    code: destination.code,
+    name: destination.name,
+    region: destination.region,
+    countryCode: destination.countryCode,
+    currencyCode: destination.currencyCode,
+    maxAltitudeMetres: destination.maxAltitudeMetres,
+    advisoryNotes: destination.advisoryNotes,
+    summary: destination.summary,
+    heroImageUrl: destination.heroImageUrl,
+    highlights: destination.highlights || [],
+    durationDays: destination.durationDays,
+    priceFrom: destination.priceFromAmount
+      ? {
+          amount: destination.priceFromAmount,
+          currencyCode: destination.priceFromCurrencyCode || destination.currencyCode,
+        }
+      : null,
+    bestTimeToVisit: destination.bestTimeToVisit,
+    fitnessLevel: destination.fitnessLevel,
+    whatToPack: destination.whatToPack || [],
+    cultureNotes: destination.cultureNotes,
+    attractions: destination.attractions || [],
+    thingsToKnow: destination.thingsToKnow || [],
+  };
+}
+
+async function listPublic(query) {
+  const result = await list({ ...query, isActive: 'true' });
+  return { ...result, data: result.data.map(toPublicMarketing) };
+}
+
+/**
+ * One destination's public page: the marketing fields plus its published
+ * testimonials. Testimonials with no destination (agency-wide quotes) live on
+ * `/public/testimonials` instead — a single destination page should not have
+ * to explain why an unrelated trek's quote is sitting on it.
+ */
+async function getPublicById(id) {
+  const destination = await getById(id);
+  if (!destination.isActive) throw ApiError.notFound('Destination not found.');
+
+  const testimonials = await Testimonial.findAll({
+    where: { destinationId: destination.id, isPublished: true },
+    order: [['createdAt', 'DESC']],
+    limit: 12,
+  });
+
+  return {
+    ...toPublicMarketing(destination),
+    testimonials: testimonials.map((row) => row.toPublicJSON()),
+  };
 }
 
 async function getById(id, { withRequirements = false } = {}) {
@@ -168,4 +232,6 @@ module.exports = {
   addRequirement,
   updateRequirement,
   deleteRequirement,
+  listPublic,
+  getPublicById,
 };

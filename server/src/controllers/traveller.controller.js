@@ -1,6 +1,9 @@
 'use strict';
 
 const travellerService = require('../services/traveller.service');
+const travellerAuthService = require('../services/travellerAuth.service');
+const taskService = require('../services/task.service');
+const ApiError = require('../utils/ApiError');
 
 const handle = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
@@ -88,6 +91,33 @@ const deleteDocument = handle(async (req, res) => {
   res.status(204).send();
 });
 
+const assignDocumentReviewer = handle(async (req, res) => {
+  const task = await taskService.assignDocumentReviewer(
+    req.params.documentId,
+    req.body,
+    req.user
+  );
+  res.json({ data: { task: task.toPublicJSON() } });
+});
+
+const uploadDocumentFile = handle(async (req, res) => {
+  if (!req.file) {
+    throw ApiError.badRequest('No file was included in the upload.', {
+      code: 'VALIDATION_ERROR',
+      details: { file: 'Required.' },
+    });
+  }
+  const document = await travellerService.attachDocumentFile(req.params.documentId, req.file);
+  res.status(200).json({ data: { document: document.toPublicJSON() } });
+});
+
+const downloadDocumentFile = handle(async (req, res) => {
+  const { document, absolutePath } = await travellerService.getDocumentFilePath(
+    req.params.documentId
+  );
+  res.download(absolutePath, document.originalFileName || 'document');
+});
+
 const checklist = handle(async (req, res) => {
   const query = req.validatedQuery;
   const result = await travellerService.buildChecklist({
@@ -100,6 +130,32 @@ const checklist = handle(async (req, res) => {
   res.json({ data: result });
 });
 
+/**
+ * Issue a portal invitation.
+ *
+ * The plaintext token comes back exactly once, in this response, and is never
+ * readable again. The consultant passes it to the traveller; there is no mail
+ * transport in this release, which is stated in the response rather than left
+ * for somebody to discover.
+ */
+const issuePortalInvite = handle(async (req, res) => {
+  const result = await travellerAuthService.issueInvite(req.params.id);
+  res.status(201).json({
+    data: {
+      ...result,
+      delivery: result.emailed
+        ? 'This link has been emailed to the traveller.'
+        : 'Give this link to the traveller yourself — it was not emailed.',
+    },
+  });
+});
+
+/** Withdraw portal access and end every session the traveller currently holds. */
+const revokePortalAccess = handle(async (req, res) => {
+  const traveller = await travellerAuthService.revokeAccess(req.params.id);
+  res.json({ data: { traveller } });
+});
+
 module.exports = {
   list,
   get,
@@ -107,11 +163,16 @@ module.exports = {
   update,
   deactivate,
   reactivate,
+  issuePortalInvite,
+  revokePortalAccess,
   listDocuments,
   addDocument,
   getDocument,
   updateDocument,
   verifyDocument,
   deleteDocument,
+  assignDocumentReviewer,
+  uploadDocumentFile,
+  downloadDocumentFile,
   checklist,
 };

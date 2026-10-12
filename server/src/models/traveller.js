@@ -1,5 +1,8 @@
 'use strict';
 
+const bcrypt = require('bcryptjs');
+const env = require('../config/env');
+
 /**
  * Masks all but the last three characters of a passport number.
  *
@@ -47,8 +50,36 @@ module.exports = (sequelize, DataTypes) => {
 
       createdByUserId: { type: DataTypes.BIGINT.UNSIGNED, allowNull: true },
       isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+
+      // --- Self-service portal credentials ---------------------------------
+      // A traveller is not staff and gets no row in `users`. Their credential
+      // lives here so a person exists in exactly one place.
+      passwordHash: { type: DataTypes.STRING(255), allowNull: true },
+      portalEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+      inviteTokenHash: { type: DataTypes.CHAR(64), allowNull: true },
+      inviteExpiresAt: { type: DataTypes.DATE, allowNull: true },
+      inviteSentAt: { type: DataTypes.DATE, allowNull: true },
+      portalActivatedAt: { type: DataTypes.DATE, allowNull: true },
+      lastLoginAt: { type: DataTypes.DATE, allowNull: true },
+      failedLoginAttempts: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false,
+        defaultValue: 0,
+      },
+      lockedUntil: { type: DataTypes.DATE, allowNull: true },
     },
-    { tableName: 'travellers', underscored: true }
+    {
+      tableName: 'travellers',
+      underscored: true,
+      defaultScope: {
+        // Same rule as staff accounts: the hash is fetched deliberately or not
+        // at all. The invite hash is just as sensitive — it is a way in.
+        attributes: { exclude: ['passwordHash', 'inviteTokenHash'] },
+      },
+      scopes: {
+        withCredentials: { attributes: { include: ['passwordHash', 'inviteTokenHash'] } },
+      },
+    }
   );
 
   Traveller.associate = (models) => {
@@ -64,10 +95,99 @@ module.exports = (sequelize, DataTypes) => {
       as: 'bookings',
     });
     Traveller.belongsTo(models.User, { foreignKey: 'createdByUserId', as: 'createdBy' });
+    Traveller.hasMany(models.RefreshToken, {
+      foreignKey: 'travellerId',
+      as: 'refreshTokens',
+      onDelete: 'CASCADE',
+    });
   };
 
   Traveller.prototype.fullName = function fullName() {
     return `${this.firstName} ${this.lastName}`.trim();
+  };
+
+  // --- Portal credentials ---------------------------------------------------
+
+  Traveller.hashPassword = async function hashPassword(plainText) {
+    return bcrypt.hash(plainText, env.auth.bcryptSaltRounds);
+  };
+
+  Traveller.prototype.verifyPassword = async function verifyPassword(plainText) {
+    if (!this.passwordHash) return false;
+    return bcrypt.compare(plainText, this.passwordHash);
+  };
+
+  /** True while a lockout from repeated failed sign-ins is still in force. */
+  Traveller.prototype.isLocked = function isLocked() {
+    return Boolean(this.lockedUntil && this.lockedUntil.getTime() > Date.now());
+  };
+
+  /** True when an unused invitation is still within its window. */
+  Traveller.prototype.hasPendingInvite = function hasPendingInvite() {
+    return Boolean(
+      this.inviteExpiresAt && this.inviteExpiresAt.getTime() > Date.now() && !this.passwordHash
+    );
+  };
+
+  /** Can this traveller sign in right now? */
+  Traveller.prototype.canUsePortal = function canUsePortal() {
+    return Boolean(this.isActive && this.portalEnabled && this.passwordHash);
+  };
+
+  /**
+   * Portal state, for the staff screens. Says what a consultant needs in order
+   * to answer "why can't my traveller log in" without reading the database.
+   */
+  Traveller.prototype.portalStatus = function portalStatus() {
+    let state = 'not_invited';
+    if (this.portalActivatedAt) state = this.portalEnabled ? 'active' : 'suspended';
+    else if (this.inviteExpiresAt) {
+      state = this.inviteExpiresAt.getTime() > Date.now() ? 'invited' : 'invite_expired';
+    }
+    return {
+      state,
+      enabled: this.portalEnabled,
+      invitedAt: this.inviteSentAt,
+      inviteExpiresAt: this.inviteExpiresAt,
+      activatedAt: this.portalActivatedAt,
+      lastLoginAt: this.lastLoginAt,
+      lockedUntil: this.isLocked() ? this.lockedUntil : null,
+    };
+  };
+
+  /**
+   * The traveller's own view of themselves in the portal.
+   *
+   * Their passport number is unmasked here and nowhere else: it is their own
+   * document, and a traveller filling in a visa form is exactly who the masking
+   * was never meant to obstruct. Staff-only fields — internal notes, who
+   * created the record — are not included.
+   */
+  Traveller.prototype.toSelfJSON = function toSelfJSON() {
+    return {
+      id: String(this.id),
+      firstName: this.firstName,
+      lastName: this.lastName,
+      fullName: this.fullName(),
+      email: this.email,
+      phone: this.phone,
+      dateOfBirth: this.dateOfBirth,
+      nationality: this.nationality,
+      passportNumber: this.passportNumber,
+      passportMasked: false,
+      passportCountry: this.passportCountry,
+      passportExpiry: this.passportExpiry,
+      emergencyContact: this.emergencyContactName
+        ? {
+            name: this.emergencyContactName,
+            phone: this.emergencyContactPhone,
+            relationship: this.emergencyContactRelationship,
+          }
+        : null,
+      dietaryNotes: this.dietaryNotes,
+      medicalNotes: this.medicalNotes,
+      documents: this.documents ? this.documents.map((doc) => doc.toPublicJSON()) : undefined,
+    };
   };
 
   /**
@@ -101,6 +221,7 @@ module.exports = (sequelize, DataTypes) => {
       dietaryNotes: this.dietaryNotes,
       medicalNotes: this.medicalNotes,
       isActive: this.isActive,
+      portal: this.portalStatus(),
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
       documents: this.documents

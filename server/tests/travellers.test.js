@@ -7,6 +7,8 @@ const {
   createDestination,
   createRequirement,
   createTraveller,
+  createBooking,
+  createOperator,
   daysFromNow,
 } = require('./helpers');
 
@@ -207,6 +209,206 @@ describe('documents', () => {
   });
 });
 
+describe('documents linked to an operator confirmation', () => {
+  it('links a permit to the arrangement that produced it', async () => {
+    const consultant = await signIn({ role: 'consultant' });
+    const traveller = await createTraveller();
+    const destination = await createDestination();
+    const operator = await createOperator(destination.id);
+    const booking = await createBooking({ consultantId: consultant.user.id, travellers: [traveller] });
+    const confirmation = await consultant.as('post', '/operators/confirmations').send({
+      bookingId: String(booking.id),
+      operatorId: String(operator.id),
+      summary: 'Sagarmatha national park permit',
+    });
+    const confirmationId = confirmation.body.data.confirmation.id;
+
+    const created = await consultant.as('post', `/travellers/${traveller.id}/documents`).send({
+      type: 'permit',
+      operatorConfirmationId: confirmationId,
+    });
+
+    expect(created.status).toBe(201);
+    expect(created.body.data.document.operatorConfirmationId).toBe(confirmationId);
+    expect(created.body.data.document.operatorConfirmation.summary).toBe(
+      'Sagarmatha national park permit'
+    );
+
+    const confirmationView = await consultant.as(
+      'get',
+      `/operators/confirmations/${confirmationId}`
+    );
+    expect(confirmationView.body.data.confirmation.documents).toHaveLength(1);
+    expect(confirmationView.body.data.confirmation.documents[0].type).toBe('permit');
+
+    // The traveller's own document list carries the link too, not just the
+    // single-document view — the staff Documents panel reads from this list.
+    const documentList = await consultant.as('get', `/travellers/${traveller.id}/documents`);
+    expect(documentList.body.data[0].operatorConfirmation.summary).toBe(
+      'Sagarmatha national park permit'
+    );
+
+    // And the booking's own readiness view shows it from the operator side —
+    // the one screen meant to tie booking, operator and document together.
+    const readiness = await consultant.as('get', `/operators/bookings/${booking.id}/readiness`);
+    const seen = readiness.body.data.confirmations.find((row) => row.id === confirmationId);
+    expect(seen.documents).toHaveLength(1);
+    expect(seen.documents[0].type).toBe('permit');
+  });
+
+  it('moves the link when a document is reassigned to a different confirmation', async () => {
+    const consultant = await signIn({ role: 'consultant' });
+    const traveller = await createTraveller();
+    const destination = await createDestination();
+    const operator = await createOperator(destination.id);
+    const booking = await createBooking({ consultantId: consultant.user.id, travellers: [traveller] });
+
+    const first = await consultant.as('post', '/operators/confirmations').send({
+      bookingId: String(booking.id),
+      operatorId: String(operator.id),
+      summary: 'First arrangement',
+    });
+    const second = await consultant.as('post', '/operators/confirmations').send({
+      bookingId: String(booking.id),
+      operatorId: String(operator.id),
+      summary: 'Second arrangement',
+    });
+
+    const created = await consultant.as('post', `/travellers/${traveller.id}/documents`).send({
+      type: 'permit',
+      operatorConfirmationId: first.body.data.confirmation.id,
+    });
+    const documentId = created.body.data.document.id;
+
+    const moved = await consultant
+      .as('patch', `/travellers/${traveller.id}/documents/${documentId}`)
+      .send({ operatorConfirmationId: second.body.data.confirmation.id });
+
+    expect(moved.body.data.document.operatorConfirmationId).toBe(
+      second.body.data.confirmation.id
+    );
+
+    const firstView = await consultant.as(
+      'get',
+      `/operators/confirmations/${first.body.data.confirmation.id}`
+    );
+    const secondView = await consultant.as(
+      'get',
+      `/operators/confirmations/${second.body.data.confirmation.id}`
+    );
+    expect(firstView.body.data.confirmation.documents).toHaveLength(0);
+    expect(secondView.body.data.confirmation.documents).toHaveLength(1);
+  });
+
+  it('refuses to link a document to a confirmation that does not exist', async () => {
+    const consultant = await signIn({ role: 'consultant' });
+    const traveller = await createTraveller();
+
+    const response = await consultant.as('post', `/travellers/${traveller.id}/documents`).send({
+      type: 'permit',
+      operatorConfirmationId: '999999',
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVALID_OPERATOR_CONFIRMATION');
+  });
+});
+
+describe('document review routing', () => {
+  it('assigns a document to a reviewer, resolving the booking automatically', async () => {
+    const consultant = await signIn({ role: 'consultant' });
+    const coordinator = await signIn({ role: 'coordinator' });
+    const traveller = await createTraveller();
+    await createBooking({ travellers: [traveller] });
+    const document = await db.TravellerDocument.create({
+      travellerId: traveller.id,
+      type: 'visa',
+      status: 'submitted',
+    });
+
+    const response = await consultant
+      .as('post', `/travellers/${traveller.id}/documents/${document.id}/assign-reviewer`)
+      .send({ userId: String(coordinator.user.id) });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.task.documentId).toBe(String(document.id));
+    expect(response.body.data.task.assignee.id).toBe(String(coordinator.user.id));
+    expect(response.body.data.task.category).toBe('documents');
+
+    const list = await consultant.as('get', `/tasks?documentId=${document.id}`);
+    expect(list.body.data).toHaveLength(1);
+  });
+
+  it('asks for the booking when the traveller is on more than one active trip', async () => {
+    const consultant = await signIn({ role: 'consultant' });
+    const coordinator = await signIn({ role: 'coordinator' });
+    const traveller = await createTraveller();
+    await createBooking({ travellers: [traveller] });
+    await createBooking({ travellers: [traveller] });
+    const document = await db.TravellerDocument.create({
+      travellerId: traveller.id,
+      type: 'visa',
+      status: 'submitted',
+    });
+
+    const response = await consultant
+      .as('post', `/travellers/${traveller.id}/documents/${document.id}/assign-reviewer`)
+      .send({ userId: String(coordinator.user.id) });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('BOOKING_REQUIRED');
+  });
+
+  it('reassigns the same task rather than raising a duplicate', async () => {
+    const consultant = await signIn({ role: 'consultant' });
+    const first = await signIn({ role: 'coordinator' });
+    const second = await signIn({ role: 'coordinator' });
+    const traveller = await createTraveller();
+    await createBooking({ travellers: [traveller] });
+    const document = await db.TravellerDocument.create({
+      travellerId: traveller.id,
+      type: 'visa',
+      status: 'submitted',
+    });
+
+    await consultant
+      .as('post', `/travellers/${traveller.id}/documents/${document.id}/assign-reviewer`)
+      .send({ userId: String(first.user.id) });
+    const second_response = await consultant
+      .as('post', `/travellers/${traveller.id}/documents/${document.id}/assign-reviewer`)
+      .send({ userId: String(second.user.id) });
+
+    expect(second_response.status).toBe(200);
+    const list = await consultant.as('get', `/tasks?documentId=${document.id}&status=all`);
+    expect(list.body.data).toHaveLength(1);
+    expect(list.body.data[0].assignee.id).toBe(String(second.user.id));
+  });
+
+  it('closes the review task once the document is verified', async () => {
+    const consultant = await signIn({ role: 'consultant' });
+    const coordinator = await signIn({ role: 'coordinator' });
+    const traveller = await createTraveller();
+    await createBooking({ travellers: [traveller] });
+    const document = await db.TravellerDocument.create({
+      travellerId: traveller.id,
+      type: 'visa',
+      status: 'submitted',
+    });
+
+    await consultant
+      .as('post', `/travellers/${traveller.id}/documents/${document.id}/assign-reviewer`)
+      .send({ userId: String(coordinator.user.id) });
+
+    await coordinator
+      .as('post', `/travellers/${traveller.id}/documents/${document.id}/verify`)
+      .send({ approved: true });
+
+    const list = await consultant.as('get', `/tasks?documentId=${document.id}&status=all`);
+    expect(list.body.data).toHaveLength(1);
+    expect(list.body.data[0].status).toBe('done');
+  });
+});
+
 describe('document checklist', () => {
   async function nepalWithRules() {
     const destination = await createDestination({ code: 'NP', maxAltitudeMetres: 5644 });
@@ -224,6 +426,76 @@ describe('document checklist', () => {
     });
     return destination;
   }
+
+  describe('when a traveller holds more than one document of a kind', () => {
+    async function visaItem(actor, traveller, destination) {
+      const response = await actor.as(
+        'get',
+        `/travellers/${traveller.id}/document-checklist?destinationIds=${destination.id}&departureDate=${daysFromNow(90)}&returnDate=${daysFromNow(110)}`
+      );
+      return response.body.data.items.find((item) => item.requirement.type === 'visa');
+    }
+
+    async function nepalNeedingVisa() {
+      const destination = await createDestination({ code: 'NP' });
+      await createRequirement(destination.id, { type: 'visa', name: 'Nepal tourist visa' });
+      return destination;
+    }
+
+    const visa = (traveller, destination, fields) =>
+      db.TravellerDocument.create({
+        travellerId: traveller.id,
+        destinationId: destination.id,
+        type: 'visa',
+        ...fields,
+      });
+
+    it('reports the replacement, not the rejected one it replaces', async () => {
+      const actor = await signIn({ role: 'consultant' });
+      const destination = await nepalNeedingVisa();
+      const traveller = await createTraveller();
+      await visa(traveller, destination, { status: 'rejected', notes: 'Photo page is cut off.' });
+      const replacement = await visa(traveller, destination, { status: 'submitted' });
+
+      const item = await visaItem(actor, traveller, destination);
+
+      // Before this, the checklist described whichever row came back first —
+      // the rejected one — so a traveller who re-sent a document saw no change.
+      expect(item.status).toBe('submitted');
+      expect(item.documentId).toBe(String(replacement.id));
+    });
+
+    it('stays satisfied by a verified document when a newer one is still being checked', async () => {
+      const actor = await signIn({ role: 'consultant' });
+      const destination = await nepalNeedingVisa();
+      const traveller = await createTraveller();
+      const good = await visa(traveller, destination, {
+        status: 'verified',
+        expiresOn: daysFromNow(400),
+      });
+      await visa(traveller, destination, { status: 'submitted' });
+
+      const item = await visaItem(actor, traveller, destination);
+
+      // Sending a second copy must not make a trip that was ready look unready.
+      expect(item.satisfied).toBe(true);
+      expect(item.documentId).toBe(String(good.id));
+    });
+
+    it('reports the newer one when the verified document will not do', async () => {
+      const actor = await signIn({ role: 'consultant' });
+      const destination = await nepalNeedingVisa();
+      const traveller = await createTraveller();
+      await visa(traveller, destination, { status: 'verified', expiresOn: daysFromNow(30) });
+      const renewed = await visa(traveller, destination, { status: 'submitted' });
+
+      const item = await visaItem(actor, traveller, destination);
+
+      expect(item.status).toBe('submitted');
+      expect(item.documentId).toBe(String(renewed.id));
+      expect(item.issues).toEqual([]);
+    });
+  });
 
   it('lists what is missing', async () => {
     const actor = await signIn({ role: 'consultant' });
@@ -299,7 +571,11 @@ describe('document checklist', () => {
 
     const insurance = response.body.data.items.find((i) => i.requirement.requiresAltitudeCover);
     expect(insurance.satisfied).toBe(false);
-    expect(insurance.issues.join(' ')).toMatch(/4000m but the itinerary reaches 5364m/);
+    // Thousands separators and a space before the unit — these strings are read
+    // by travellers on a phone, not only by staff.
+    expect(insurance.issues.join(' ')).toMatch(
+      /Altitude cover is 4,000 m but the itinerary reaches 5,364 m\./
+    );
   });
 
   it('flags insurance with no insurer contact number', async () => {

@@ -1,0 +1,513 @@
+Table users {
+  id bigint [pk, increment, not null]
+  first_name VARCHAR(100) [not null]
+  last_name VARCHAR(100) [not null]
+  email VARCHAR(255) [not null, unique, note: 'UQ']
+  password_hash VARCHAR(255) [not null, note: 'bcrypt']
+  role varchar [not null, default: 'consultant', note: 'ENUM consultant,coordinator,finance,admin']
+  is_active boolean [not null, default: true]
+  last_login_at DATETIME [null]
+  failed_login_attempts int [not null, default: 0, note: 'lock after 5']
+  locked_until DATETIME [null, note: '15 minute lock']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'Staff account with one of four roles'
+}
+
+Table refresh_tokens {
+  id bigint [pk, increment, not null]
+  user_id bigint [null]
+  token_hash CHAR(64) [not null, unique, note: 'UQ, SHA-256 hash only']
+  expires_at DATETIME [not null]
+  revoked_at DATETIME [null]
+  replaced_by_hash CHAR(64) [null, note: 'links a rotated token to its successor']
+  user_agent VARCHAR(255) [null]
+  ip_address VARCHAR(45) [null]
+  subject_type varchar [not null, default: 'staff', note: 'ENUM staff,traveller,operator']
+  traveller_id bigint [null]
+  operator_id bigint [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'One signed-in session for a staff member, traveller or operator; exactly one of user_id, traveller_id, operator_id is filled'
+}
+
+Table destinations {
+  id bigint [pk, increment, not null]
+  code VARCHAR(10) [not null, unique, note: 'UQ']
+  name VARCHAR(120) [not null]
+  country_code CHAR(2) [null]
+  region VARCHAR(60) [null]
+  currency_code CHAR(3) [not null, default: 'AUD']
+  max_altitude_metres int [null]
+  advisory_notes TEXT [null]
+  is_active boolean [not null, default: true]
+  summary VARCHAR(500) [null]
+  hero_image_url VARCHAR(500) [null]
+  highlights JSON [null, note: 'list']
+  duration_days int [null]
+  price_from_amount DECIMAL(10,2) [null]
+  price_from_currency_code CHAR(3) [null]
+  best_time_to_visit VARCHAR(200) [null]
+  fitness_level varchar [null, note: 'ENUM easy,moderate,challenging,strenuous']
+  what_to_pack JSON [null, note: 'list']
+  culture_notes TEXT [null]
+  attractions JSON [null, note: 'list']
+  things_to_know JSON [null, note: 'list']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'Country or region sold, with travel-guide and marketing content'
+}
+
+Table document_requirements {
+  id bigint [pk, increment, not null]
+  destination_id bigint [not null]
+  type varchar [not null, note: 'ENUM passport,visa,insurance,health_declaration,permit,vaccination,other']
+  name VARCHAR(160) [not null]
+  description TEXT [null]
+  is_mandatory boolean [not null, default: true]
+  lead_time_days int [not null, default: 14, note: 'due date = departure minus this']
+  min_validity_months int [null, note: 'passports']
+  requires_altitude_cover boolean [not null, default: false, note: 'insurance']
+  is_active boolean [not null, default: true]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes {
+    (destination_id, type, name) [unique]
+  }
+  Note: 'A document a destination requires of every traveller'
+}
+
+Table travellers {
+  id bigint [pk, increment, not null]
+  first_name VARCHAR(100) [not null]
+  last_name VARCHAR(100) [not null]
+  email VARCHAR(255) [null, note: 'not unique']
+  phone VARCHAR(40) [null]
+  date_of_birth DATE [null]
+  nationality CHAR(2) [null]
+  passport_number VARCHAR(60) [null, note: 'masked in lists and for finance']
+  passport_country CHAR(2) [null]
+  passport_expiry DATE [null]
+  emergency_contact_name VARCHAR(160) [null]
+  emergency_contact_phone VARCHAR(40) [null]
+  emergency_contact_relationship VARCHAR(60) [null]
+  dietary_notes TEXT [null]
+  medical_notes TEXT [null, note: 'sensitive information']
+  created_by_user_id bigint [null]
+  is_active boolean [not null, default: true]
+  password_hash VARCHAR(255) [null]
+  portal_enabled boolean [not null, default: false]
+  invite_token_hash CHAR(64) [null]
+  invite_expires_at DATETIME [null, note: '72 hours']
+  invite_sent_at DATETIME [null]
+  portal_activated_at DATETIME [null]
+  last_login_at DATETIME [null]
+  failed_login_attempts int [not null, default: 0]
+  locked_until DATETIME [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'A person who travels; also holds their portal sign-in columns'
+}
+
+Table traveller_documents {
+  id bigint [pk, increment, not null]
+  traveller_id bigint [not null]
+  destination_id bigint [null]
+  type varchar [not null, note: 'ENUM passport,visa,insurance,health_declaration,permit,vaccination,other']
+  reference VARCHAR(120) [null]
+  issuer VARCHAR(160) [null]
+  issued_on DATE [null]
+  expires_on DATE [null, note: 'expired status is computed']
+  status varchar [not null, default: 'outstanding', note: 'ENUM outstanding,submitted,verified,rejected']
+  altitude_cover_metres int [null, note: 'insurance']
+  insurer_contact_phone VARCHAR(40) [null]
+  verified_by_user_id bigint [null]
+  verified_at DATETIME [null]
+  notes TEXT [null]
+  file_path VARCHAR(500) [null, note: 'external link']
+  stored_file_name VARCHAR(300) [null, note: 'random UUID name']
+  original_file_name VARCHAR(255) [null]
+  file_mime_type VARCHAR(100) [null]
+  file_size_bytes int [null]
+  operator_confirmation_id bigint [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'A document a traveller holds, with status and optional uploaded file'
+}
+
+Table bookings {
+  id bigint [pk, increment, not null]
+  reference VARCHAR(20) [not null, unique, note: 'UQ, e.g. TA-2026-0007']
+  title VARCHAR(200) [not null]
+  status varchar [not null, default: 'enquiry', note: 'ENUM enquiry,quoted,confirmed,in_progress,completed,cancelled']
+  consultant_id bigint [not null]
+  coordinator_id bigint [null]
+  lead_traveller_id bigint [null]
+  departure_date DATE [null]
+  return_date DATE [null]
+  party_size int [not null, default: 1]
+  currency_code CHAR(3) [not null, default: 'AUD', note: 'base currency for payments']
+  total_amount DECIMAL(12,2) [null]
+  deposit_amount DECIMAL(12,2) [null]
+  notes TEXT [null]
+  cancelled_at DATETIME [null]
+  cancellation_reason VARCHAR(500) [null]
+  created_by_user_id bigint [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'One trip'
+}
+
+Table booking_travellers {
+  id bigint [pk, increment, not null]
+  booking_id bigint [not null]
+  traveller_id bigint [not null]
+  is_lead boolean [not null, default: false]
+  notes VARCHAR(500) [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes {
+    (booking_id, traveller_id) [unique]
+  }
+  Note: 'Puts a traveller on a booking (junction table)'
+}
+
+Table itinerary_segments {
+  id bigint [pk, increment, not null]
+  booking_id bigint [not null]
+  destination_id bigint [not null]
+  sequence int [not null]
+  title VARCHAR(200) [not null]
+  description TEXT [null]
+  start_date DATE [null]
+  end_date DATE [null]
+  accommodation VARCHAR(300) [null]
+  transport_notes TEXT [null]
+  max_altitude_metres int [null, note: 'feeds insurance altitude check']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes {
+    (booking_id, sequence) [unique]
+  }
+  Note: 'One ordered leg of a booking in one destination'
+}
+
+Table location_consents {
+  id bigint [pk, increment, not null]
+  traveller_id bigint [not null]
+  booking_id bigint [not null]
+  status varchar [not null, default: 'withdrawn', note: 'ENUM granted,withdrawn']
+  granted_at DATETIME [null]
+  withdrawn_at DATETIME [null]
+  consent_statement VARCHAR(500) [null, note: 'exact wording agreed to']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes {
+    (traveller_id, booking_id) [unique]
+  }
+  Note: 'A traveller’s consent to share location on one booking'
+}
+
+Table location_pings {
+  id bigint [pk, increment, not null]
+  traveller_id bigint [not null]
+  booking_id bigint [not null]
+  latitude DECIMAL(9,6) [not null]
+  longitude DECIMAL(9,6) [not null]
+  accuracy_metres int [null]
+  altitude_metres int [null]
+  battery_percent int [null]
+  source varchar [not null, default: 'device', note: 'ENUM device,manual,sos']
+  recorded_at DATETIME [not null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'One recorded position; deleted 30 days after the trip ends'
+}
+
+Table sos_alerts {
+  id bigint [pk, increment, not null]
+  traveller_id bigint [not null]
+  booking_id bigint [not null]
+  status varchar [not null, default: 'raised', note: 'ENUM raised,acknowledged,resolved,cancelled']
+  raised_at DATETIME [not null]
+  latitude DECIMAL(9,6) [null]
+  longitude DECIMAL(9,6) [null]
+  accuracy_metres int [null]
+  message VARCHAR(500) [null]
+  acknowledged_at DATETIME [null]
+  acknowledged_by_user_id bigint [null]
+  resolved_at DATETIME [null]
+  resolved_by_user_id bigint [null]
+  resolution_notes TEXT [null, note: 'required to resolve']
+  cancelled_at DATETIME [null]
+  assigned_to_user_id bigint [null]
+  assigned_at DATETIME [null]
+  assigned_by_user_id bigint [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'Emergency alert raised by a traveller on a booking; kept indefinitely'
+}
+
+Table sos_alert_events {
+  id bigint [pk, increment, not null]
+  alert_id bigint [not null]
+  type varchar [not null, note: 'ENUM raised,acknowledged,assigned,unassigned,escalated,resolved,cancelled']
+  actor_kind varchar [not null, note: 'ENUM traveller,staff,system']
+  actor_user_id bigint [null]
+  detail VARCHAR(1000) [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'One entry in an alert’s history; append-only; never holds coordinates'
+}
+
+Table tasks {
+  id bigint [pk, increment, not null]
+  booking_id bigint [not null]
+  traveller_id bigint [null]
+  title VARCHAR(200) [not null]
+  description TEXT [null]
+  category varchar [not null, default: 'other', note: 'ENUM documents,payment,operator,itinerary,admin,other']
+  status varchar [not null, default: 'open', note: 'ENUM open,in_progress,blocked,done,cancelled']
+  priority varchar [not null, default: 'normal', note: 'ENUM low,normal,high,urgent']
+  due_on DATE [null]
+  assigned_to_user_id bigint [null]
+  created_by_user_id bigint [null]
+  source varchar [not null, default: 'manual', note: 'ENUM manual,readiness']
+  source_key VARCHAR(120) [null, note: 'identifies the document gap']
+  blocked_reason VARCHAR(500) [null]
+  completed_at DATETIME [null]
+  completed_by_user_id bigint [null]
+  document_id bigint [null, note: 'logical link to traveller_documents, no DB constraint']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes {
+    (booking_id, source_key) [unique]
+  }
+  Note: 'A piece of work on a booking, manual or generated from a document gap'
+}
+
+Table task_events {
+  id bigint [pk, increment, not null]
+  task_id bigint [not null]
+  type varchar [not null, note: 'ENUM created,assigned,unassigned,status_changed,note,edited,handover']
+  actor_user_id bigint [null]
+  from_value VARCHAR(120) [null]
+  to_value VARCHAR(120) [null]
+  note VARCHAR(1000) [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'One entry in a task’s history; append-only'
+}
+
+Table notifications {
+  id bigint [pk, increment, not null]
+  user_id bigint [null]
+  actor_user_id bigint [null]
+  type varchar [not null, note: '21 types']
+  severity varchar [not null, default: 'info', note: 'ENUM info,warning,urgent']
+  title VARCHAR(200) [not null]
+  body VARCHAR(500) [null]
+  link VARCHAR(200) [null]
+  dedupe_key VARCHAR(120) [null, note: 'stops repeats']
+  read_at DATETIME [null]
+  traveller_id bigint [null, note: 'no DB constraint']
+  operator_id bigint [null, note: 'no DB constraint']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes {
+    (user_id, dedupe_key) [unique]
+  }
+  Note: 'One in-app message to one staff member, traveller or operator; exactly one of user_id, traveller_id, operator_id is filled'
+}
+
+Table operators {
+  id bigint [pk, increment, not null]
+  name VARCHAR(180) [not null]
+  destination_id bigint [not null]
+  type varchar [not null, default: 'full_service', note: 'ENUM guide,accommodation,transport,permits,equipment,full_service,other']
+  contact_name VARCHAR(160) [null]
+  contact_email VARCHAR(255) [null]
+  contact_phone VARCHAR(40) [null]
+  whatsapp VARCHAR(40) [null]
+  typical_response_days int [not null, default: 3, note: 'sets default deadlines']
+  vetted_at DATETIME [null]
+  vetted_by_user_id bigint [null]
+  vetting_notes TEXT [null]
+  notes TEXT [null]
+  is_active boolean [not null, default: true]
+  password_hash VARCHAR(255) [null]
+  portal_enabled boolean [not null, default: false]
+  invite_token_hash CHAR(64) [null]
+  invite_expires_at DATETIME [null]
+  invite_sent_at DATETIME [null]
+  portal_activated_at DATETIME [null]
+  last_login_at DATETIME [null]
+  failed_login_attempts int [not null, default: 0]
+  locked_until DATETIME [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes {
+    (destination_id, name) [unique]
+  }
+  Note: 'A local supplier in one destination, with portal sign-in columns'
+}
+
+Table operator_confirmations {
+  id bigint [pk, increment, not null]
+  booking_id bigint [not null]
+  operator_id bigint [not null]
+  itinerary_segment_id bigint [null]
+  service_type varchar [not null, default: 'other', note: 'ENUM guide,accommodation,transport,permits,equipment,other']
+  summary VARCHAR(300) [not null]
+  details TEXT [null]
+  status varchar [not null, default: 'pending', note: 'ENUM pending,requested,confirmed,declined,cancelled']
+  operator_reference VARCHAR(120) [null]
+  due_by DATE [null]
+  requested_at DATETIME [null]
+  responded_at DATETIME [null]
+  currency_code CHAR(3) [not null, default: 'AUD', note: 'operator’s quote']
+  amount DECIMAL(12,2) [null, note: 'operator’s quote']
+  decline_reason VARCHAR(500) [null]
+  created_by_user_id bigint [null]
+  updated_by_user_id bigint [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'A request to an operator for a service on a booking, and the answer'
+}
+
+Table payment_schedules {
+  id bigint [pk, increment, not null]
+  booking_id bigint [not null]
+  label VARCHAR(120) [not null]
+  sequence int [not null, default: 1]
+  due_on DATE [not null]
+  currency_code CHAR(3) [not null, default: 'AUD']
+  amount DECIMAL(12,2) [not null]
+  status varchar [not null, default: 'scheduled', note: 'ENUM scheduled,waived,cancelled']
+  waived_reason VARCHAR(500) [null]
+  notes TEXT [null]
+  created_by_user_id bigint [null]
+  updated_by_user_id bigint [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'An instalment: an amount due on a booking by a date (no paid column; paid is computed from payments)'
+}
+
+Table payments {
+  id bigint [pk, increment, not null]
+  booking_id bigint [not null]
+  payment_schedule_id bigint [null]
+  operator_confirmation_id bigint [null]
+  direction varchar [not null, default: 'incoming', note: 'ENUM incoming,outgoing']
+  method varchar [not null, default: 'bank_transfer', note: 'ENUM bank_transfer,card,cash,cheque,agent_credit,other']
+  status varchar [not null, default: 'pending', note: 'ENUM pending,cleared,failed,refunded']
+  currency_code CHAR(3) [not null, default: 'AUD']
+  amount DECIMAL(12,2) [not null]
+  base_currency_code CHAR(3) [not null, default: 'AUD']
+  exchange_rate DECIMAL(16,8) [not null, default: 1]
+  amount_in_base DECIMAL(12,2) [not null]
+  reference VARCHAR(120) [null, note: 'unique per direction']
+  received_on DATE [not null]
+  cleared_at DATETIME [null]
+  settled_reason VARCHAR(500) [null, note: 'required for failed or refunded']
+  notes TEXT [null]
+  recorded_by_user_id bigint [null]
+  updated_by_user_id bigint [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes {
+    (direction, reference) [unique]
+  }
+  Note: 'One movement of money on a booking, in or out; amount_in_base = amount x exchange_rate, fixed at entry'
+}
+
+Table testimonials {
+  id bigint [pk, increment, not null]
+  destination_id bigint [null]
+  author_name VARCHAR(160) [not null]
+  trip_reference VARCHAR(20) [null]
+  quote TEXT [not null]
+  rating TINYINT [null]
+  is_published boolean [not null, default: true]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'A published traveller quote, optionally about one destination'
+}
+
+Table contact_messages {
+  id bigint [pk, increment, not null]
+  name VARCHAR(160) [not null]
+  email VARCHAR(255) [not null]
+  phone VARCHAR(40) [null]
+  message TEXT [not null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'General message from the public site; no links to other tables'
+}
+
+Table email_logs {
+  id bigint [pk, increment, not null]
+  to_address VARCHAR(255) [not null]
+  subject VARCHAR(255) [not null]
+  context VARCHAR(120) [null, note: 'e.g. notification:sos_raised']
+  status varchar [not null, note: 'ENUM sent,failed,skipped']
+  error TEXT [null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'One attempt to send an email; no links to other tables'
+}
+
+Ref: refresh_tokens.user_id > users.id [delete: cascade]
+Ref: refresh_tokens.traveller_id > travellers.id [delete: cascade]
+Ref: refresh_tokens.operator_id > operators.id [delete: cascade]
+Ref: document_requirements.destination_id > destinations.id [delete: cascade]
+Ref: travellers.created_by_user_id > users.id [delete: set null]
+Ref: traveller_documents.traveller_id > travellers.id [delete: cascade]
+Ref: traveller_documents.destination_id > destinations.id [delete: set null]
+Ref: traveller_documents.verified_by_user_id > users.id [delete: set null]
+Ref: traveller_documents.operator_confirmation_id > operator_confirmations.id [delete: set null]
+Ref: bookings.consultant_id > users.id [delete: restrict]
+Ref: bookings.coordinator_id > users.id [delete: set null]
+Ref: bookings.lead_traveller_id > travellers.id [delete: set null]
+Ref: bookings.created_by_user_id > users.id [delete: set null]
+Ref: booking_travellers.booking_id > bookings.id [delete: cascade]
+Ref: booking_travellers.traveller_id > travellers.id [delete: cascade]
+Ref: itinerary_segments.booking_id > bookings.id [delete: cascade]
+Ref: itinerary_segments.destination_id > destinations.id [delete: restrict]
+Ref: location_consents.traveller_id > travellers.id [delete: cascade]
+Ref: location_consents.booking_id > bookings.id [delete: cascade]
+Ref: location_pings.traveller_id > travellers.id [delete: cascade]
+Ref: location_pings.booking_id > bookings.id [delete: cascade]
+Ref: sos_alerts.traveller_id > travellers.id [delete: restrict]
+Ref: sos_alerts.booking_id > bookings.id [delete: restrict]
+Ref: sos_alerts.acknowledged_by_user_id > users.id [delete: set null]
+Ref: sos_alerts.resolved_by_user_id > users.id [delete: set null]
+Ref: sos_alerts.assigned_to_user_id > users.id [delete: set null]
+Ref: sos_alerts.assigned_by_user_id > users.id [delete: set null]
+Ref: sos_alert_events.alert_id > sos_alerts.id [delete: cascade]
+Ref: sos_alert_events.actor_user_id > users.id [delete: set null]
+Ref: tasks.booking_id > bookings.id [delete: cascade]
+Ref: tasks.traveller_id > travellers.id [delete: set null]
+Ref: tasks.assigned_to_user_id > users.id [delete: set null]
+Ref: tasks.created_by_user_id > users.id [delete: set null]
+Ref: tasks.completed_by_user_id > users.id [delete: set null]
+Ref: task_events.task_id > tasks.id [delete: cascade]
+Ref: task_events.actor_user_id > users.id [delete: set null]
+Ref: notifications.user_id > users.id [delete: cascade]
+Ref: notifications.actor_user_id > users.id [delete: set null]
+Ref: operators.destination_id > destinations.id [delete: restrict]
+Ref: operators.vetted_by_user_id > users.id [delete: set null]
+Ref: operator_confirmations.booking_id > bookings.id [delete: cascade]
+Ref: operator_confirmations.operator_id > operators.id [delete: restrict]
+Ref: operator_confirmations.itinerary_segment_id > itinerary_segments.id [delete: set null]
+Ref: operator_confirmations.created_by_user_id > users.id [delete: set null]
+Ref: operator_confirmations.updated_by_user_id > users.id [delete: set null]
+Ref: payment_schedules.booking_id > bookings.id [delete: cascade]
+Ref: payment_schedules.created_by_user_id > users.id [delete: set null]
+Ref: payment_schedules.updated_by_user_id > users.id [delete: set null]
+Ref: payments.booking_id > bookings.id [delete: cascade]
+Ref: payments.payment_schedule_id > payment_schedules.id [delete: set null]
+Ref: payments.operator_confirmation_id > operator_confirmations.id [delete: set null]
+Ref: payments.recorded_by_user_id > users.id [delete: set null]
+Ref: payments.updated_by_user_id > users.id [delete: set null]
+Ref: testimonials.destination_id > destinations.id [delete: cascade]

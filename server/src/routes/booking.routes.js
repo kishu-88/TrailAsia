@@ -3,6 +3,7 @@
 const express = require('express');
 
 const bookingController = require('../controllers/booking.controller');
+const taskController = require('../controllers/task.controller');
 const authenticate = require('../middleware/authenticate');
 const requireRole = require('../middleware/requireRole');
 const { validateBody } = require('../validators/common');
@@ -60,5 +61,14 @@ router.delete('/:id/itinerary/:segmentId', canEdit, bookingController.deleteSegm
 
 // Document readiness for the whole party, against every destination visited.
 router.get('/:id/readiness', bookingController.readiness);
+
+/**
+ * Turn this booking's outstanding requirements into tasks, and close the ones
+ * whose gap has been filled. Idempotent — safe to run every morning.
+ *
+ * Mounted here rather than under `/tasks` because it is an action on a booking:
+ * the booking is the thing that has readiness, and the tasks are the output.
+ */
+router.post('/:bookingId/tasks/sync', canEdit, taskController.syncFromReadiness);
 
 module.exports = router;

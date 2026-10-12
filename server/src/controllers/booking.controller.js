@@ -24,7 +24,7 @@ const update = handle(async (req, res) => {
 });
 
 const cancel = handle(async (req, res) => {
-  const booking = await bookingService.cancel(req.params.id, req.body.reason);
+  const booking = await bookingService.cancel(req.params.id, req.body.reason, req.user);
   res.json({ data: { booking: booking.toPublicJSON() } });
 });
 

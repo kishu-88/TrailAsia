@@ -19,12 +19,12 @@ const shared = {
   database: process.env.DB_NAME || 'trailasia',
   // Traveller names and destination data are not Latin-only.
   charset: 'utf8mb4',
-  collate: 'utf8mb4_0900_ai_ci',
+  collate: 'utf8mb4_general_ci',
   define: {
     underscored: true,
     freezeTableName: false,
     charset: 'utf8mb4',
-    collate: 'utf8mb4_0900_ai_ci',
+    collate: 'utf8mb4_general_ci',
   },
   pool: {
     max: Number.parseInt(process.env.DB_CONNECTION_LIMIT || '10', 10),

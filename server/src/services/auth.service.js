@@ -34,6 +34,7 @@ async function issueRefreshToken(userId, context, transaction) {
   const { token, tokenHash } = generateRefreshToken();
   await RefreshToken.create(
     {
+      subjectType: 'staff',
       userId,
       tokenHash,
       expiresAt: refreshTokenExpiry(),
@@ -117,7 +118,13 @@ async function refresh(presentedToken, context = {}) {
   }
 
   const tokenHash = hashRefreshToken(presentedToken);
-  const existing = await RefreshToken.findOne({ where: { tokenHash } });
+  const existing = await RefreshToken.findOne({
+    // Staff and travellers share this table, so the subject type is part of the
+    // lookup, not something checked afterwards. Without it a traveller's cookie
+    // presented here would reach `revokeAllForUser(null)` below, which matches
+    // every traveller session at once.
+    where: { tokenHash, subjectType: 'staff' },
+  });
 
   if (!existing) {
     throw ApiError.unauthorized('Session is no longer valid. Please sign in again.', {
@@ -207,7 +214,7 @@ async function changePassword(user, { currentPassword, newPassword }, context = 
     );
     await RefreshToken.update(
       { revokedAt: new Date() },
-      { where: { userId: user.id, revokedAt: null }, transaction }
+      { where: { subjectType: 'staff', userId: user.id, revokedAt: null }, transaction }
     );
     return issueRefreshToken(user.id, context, transaction);
   });
@@ -224,7 +231,7 @@ async function changePassword(user, { currentPassword, newPassword }, context = 
 async function revokeAllForUser(userId) {
   await RefreshToken.update(
     { revokedAt: new Date() },
-    { where: { userId, revokedAt: null } }
+    { where: { subjectType: 'staff', userId, revokedAt: null } }
   );
 }
 

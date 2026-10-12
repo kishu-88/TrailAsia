@@ -37,8 +37,17 @@ function toApiError(error) {
 
 // --- Reusable pieces -------------------------------------------------------
 
-/** A positive integer id arriving as a string from JSON or a path parameter. */
-const idLike = z.union([z.string().regex(/^\d+$/, 'Must be an id.'), z.number().int().positive()]);
+/**
+ * A positive integer id arriving as a string from JSON or a path parameter.
+ *
+ * The message is written for whoever is looking at the form, not for us: this
+ * fires most often when a required dropdown was left empty, and "Must be an id"
+ * tells that person nothing they can act on.
+ */
+const idLike = z.union([
+  z.string().regex(/^\d+$/, 'Select a valid option.'),
+  z.number().int().positive(),
+]);
 
 /** ISO date, `YYYY-MM-DD`. Dates without times avoid a world of timezone pain. */
 const dateOnly = z

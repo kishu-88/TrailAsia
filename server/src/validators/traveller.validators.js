@@ -38,6 +38,9 @@ const createDocumentSchema = z
   .object({
     type: z.enum(DOCUMENT_TYPES),
     destinationId: idLike.nullish(),
+    // Set when this document exists because of a specific arrangement with a
+    // ground operator — a permit obtained for a confirmed booking, say.
+    operatorConfirmationId: idLike.nullish(),
     reference: z.string().trim().max(120).nullish(),
     issuer: z.string().trim().max(160).nullish(),
     issuedOn: dateOnly.nullish(),
@@ -57,6 +60,7 @@ const updateDocumentSchema = atLeastOneField(
     .object({
       type: z.enum(DOCUMENT_TYPES).optional(),
       destinationId: idLike.nullish(),
+      operatorConfirmationId: idLike.nullish(),
       reference: z.string().trim().max(120).nullish(),
       issuer: z.string().trim().max(160).nullish(),
       issuedOn: dateOnly.nullish(),

@@ -34,6 +34,15 @@ function errorHandler(error, _req, res, _next) {
       apiError = new ApiError(503, 'Database is unavailable.', {
         code: 'DATABASE_UNAVAILABLE',
       });
+    } else if (error.name === 'MulterError' && error.code === 'LIMIT_FILE_SIZE') {
+      apiError = ApiError.badRequest('That file is too large.', {
+        code: 'FILE_TOO_LARGE',
+        details: { file: 'Exceeds the maximum upload size.' },
+      });
+    } else if (error.name === 'MulterError') {
+      apiError = ApiError.badRequest('That upload could not be read.', {
+        code: 'INVALID_UPLOAD',
+      });
     }
   }
 

@@ -59,7 +59,7 @@ module.exports = {
         created_at: { type: Sequelize.DATE, allowNull: false },
         updated_at: { type: Sequelize.DATE, allowNull: false },
       },
-      { charset: 'utf8mb4', collate: 'utf8mb4_0900_ai_ci', engine: 'InnoDB' }
+      { charset: 'utf8mb4', collate: 'utf8mb4_general_ci', engine: 'InnoDB' }
     );
 
     await queryInterface.addIndex('document_requirements', ['destination_id'], {

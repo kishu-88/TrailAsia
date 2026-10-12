@@ -4,14 +4,18 @@ const jwt = require('jsonwebtoken');
 
 const { User } = require('../models');
 const ApiError = require('../utils/ApiError');
-const { verifyAccessToken } = require('../utils/tokens');
+const { verifyAccessToken, STAFF_SCOPE } = require('../utils/tokens');
 
 /**
- * Require a valid access token.
+ * Require a valid staff access token.
  *
  * On success `req.user` holds the User instance and `req.auth` the raw claims.
  * The user is loaded on every request rather than trusted from the token alone,
  * so deactivating an account takes effect immediately instead of at token expiry.
+ *
+ * A traveller's token is rejected here before anything is loaded. That check is
+ * not a formality: `sub` is a primary key from a different table, so without it
+ * traveller 7 would be looked up in `users` and come back as a member of staff.
  */
 async function authenticate(req, _res, next) {
   try {
@@ -24,7 +28,7 @@ async function authenticate(req, _res, next) {
 
     let claims;
     try {
-      claims = verifyAccessToken(token);
+      claims = verifyAccessToken(token, { scope: STAFF_SCOPE });
     } catch (error) {
       if (error instanceof jwt.TokenExpiredError) {
         // The client watches for this code and silently calls /auth/refresh.

@@ -61,17 +61,21 @@ cp .env.example .env        # Windows: copy .env.example .env
 npm install
 ```
 
-Fill in `.env`. At minimum you need `DB_PASSWORD`, a `JWT_SECRET`, and the seed admin details:
+Fill in `.env`. For local development only two values are actually required — `DB_PASSWORD` and
+a `JWT_SECRET`:
 
 ```bash
 # generate a secret
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
+The seeded staff accounts fall back to development defaults, so you do not need to set those
+before your first run. See **Seeded accounts** below.
+
 Create the database:
 
 ```sql
-CREATE DATABASE trailasia CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE DATABASE trailasia CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 CREATE USER 'trailasia_app'@'localhost' IDENTIFIED BY '<password>';
 GRANT ALL PRIVILEGES ON trailasia.* TO 'trailasia_app'@'localhost';
 FLUSH PRIVILEGES;
@@ -80,8 +84,8 @@ FLUSH PRIVILEGES;
 Then:
 
 ```bash
-npm run db:migrate     # creates users and refresh_tokens
-npm run db:seed        # creates the first admin from SEED_ADMIN_* in .env
+npm run db:migrate     # creates every table
+npm run db:seed        # staff accounts, destinations and document requirements
 npm run dev            # http://localhost:4000/api/v1
 ```
 
@@ -90,6 +94,38 @@ Check it responds:
 ```bash
 curl http://localhost:4000/api/v1/health
 ```
+
+---
+
+## Seeded accounts
+
+`npm run db:seed` creates one account per role and prints the credentials. With nothing set in
+`.env` you get development defaults:
+
+| Role | Email | Password |
+| ---- | ----- | -------- |
+| `admin` | `admin@trailasia.local` | `trailasia-dev-password` |
+| `coordinator` | `coordinator@trailasia.local` | `trailasia-dev-password` |
+| `consultant` | `consultant@trailasia.local` | `trailasia-dev-password` |
+| `finance` | `finance@trailasia.local` | `trailasia-dev-password` |
+
+Four accounts rather than one because the roles are the interesting part. Sign in as the
+consultant and the Verify button on a traveller's insurance is gone; as finance and the passport
+number stays masked and the Staff nav item disappears; only the admin can reach account
+management. That is duty separation from Section 8.2, and it is worth seeing rather than reading.
+
+Override any of them with `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` and the matching
+`SEED_COORDINATOR_*`, `SEED_CONSULTANT_*`, `SEED_FINANCE_*`, or set one `SEED_DEFAULT_PASSWORD`
+for all four.
+
+**The defaults are refused when `NODE_ENV=production`.** The seeder throws and names the variables
+you have to set. A known password in a public repository is only harmless while nothing real sits
+behind it, and this project is heading towards passport numbers and health declarations.
+
+Re-running the seeder is safe: an account that already exists is skipped, never overwritten, so a
+password someone has since changed is not quietly reset. `npm run db:seed:undo` removes them —
+though it will fail once those accounts own bookings, because `bookings.consultant_id` is
+`ON DELETE RESTRICT`. That is the right failure; undoing a seeder should not take bookings with it.
 
 ---
 
@@ -191,7 +227,7 @@ working `down` wherever reversal is possible.
 
 MySQL specifics worth holding to:
 
-- **Charset** — `utf8mb4` / `utf8mb4_0900_ai_ci` everywhere. Traveller names and destination data
+- **Charset** — `utf8mb4` / `utf8mb4_general_ci` everywhere. Traveller names and destination data
   are not Latin-only.
 - **Money** — `DECIMAL(12,2)` plus a separate `CHAR(3)` currency column. Never `FLOAT`. Store the
   exchange rate used on the transaction row rather than recomputing it later.
